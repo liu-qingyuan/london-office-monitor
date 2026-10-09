@@ -1,0 +1,36 @@
+.ralph/
+AGENTS.md
+.claude/
+CLAUDE.md
+
+# Authentication and local configuration: never ship credentials.
+.auth/
+.codex/
+.env
+.env.*
+!.env.example
+*auth*.json
+*.pem
+*.key
+
+# Environments, generated builds and caches.
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+node_modules/
+frontend/dist/
+.DS_Store
+
+# Local processes, conversations, raw third-party documents and browser profiles.
+var/
+raw/
+playwright-report/
+test-results/
+.browser/
+*.log
+
+# Evidence is reviewed explicitly before publication.
+artifacts/
+dist/

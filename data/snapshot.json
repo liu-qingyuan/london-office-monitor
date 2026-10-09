@@ -1,0 +1,70 @@
+{
+  "schema_version": 1,
+  "dataset": {
+    "label": "Savills London office year-end reports: reviewed historical extracts",
+    "data_kind": "historical_market",
+    "as_of": "2025-12-31",
+    "last_reviewed_at": "2026-10-09T15:27:55Z",
+    "is_live": false
+  },
+  "areas": [
+    {"id":"city","name":"City","center":[-0.089,51.516],"definition":"Savills City market; exact reporting extent is not published in these articles.","geometry_status":"illustrative"},
+    {"id":"west_end","name":"West End","center":[-0.140,51.514],"definition":"Savills West End market; not just Mayfair / St James's. Exact reporting extent is not published in these articles.","geometry_status":"illustrative"},
+    {"id":"canary_wharf","name":"Canary Wharf","center":[-0.018,51.505],"definition":"Requested business submarket. No same-definition verified observation in this snapshot; not substituted with Docklands.","geometry_status":"illustrative"},
+    {"id":"midtown_fringe","name":"Midtown / Fringe","center":[-0.111,51.525],"definition":"Requested business grouping; no unified reporting extent or same-definition verified observation. Midtown is not automatically all Fringe.","geometry_status":"illustrative"}
+  ],
+  "metrics": [
+    {"id":"prime_rent","label":"Average prime rent","unit":"GBP/sq ft","definition":"Savills average prime achieved office rent, based on transaction evidence; not top rent or prime headline rent. Reported year-end value; averaging window and billing period not stated.","definition_id":"savills-average-prime-achieved","billing_period":"not_stated_by_source","change_unit":"%"},
+    {"id":"grade_a_rent","label":"Average Grade A rent","unit":"GBP/sq ft","definition":"Savills average Grade A office rent; distinct from average prime rent and top rent. Reported year-end value; averaging window and billing period not stated.","definition_id":"savills-average-grade-a","billing_period":"not_stated_by_source","change_unit":"%"},
+    {"id":"vacancy_rate","label":"Overall vacancy rate","unit":"%","definition":"Savills overall submarket vacancy rate at year-end. Not Grade A tower / prime tower / Core vacancy or availability rate; stock denominator not detailed in the article.","definition_id":"savills-overall-submarket-vacancy","billing_period":"not_applicable","change_unit":"percentage points"}
+  ],
+  "periods": [
+    {"id":"2024-YE","label":"2024 year-end","as_of":"2024-12-31"},
+    {"id":"2025-YE","label":"2025 year-end","as_of":"2025-12-31"}
+  ],
+  "limitations": [
+    "Historical report extracts, not a live or comprehensive market feed. A source check does not discover newer reports.",
+    "All map polygons are hand-drawn navigation selectors, not reporting footprints or administrative boundaries.",
+    "Only City and West End have verified same-definition values in this snapshot; Canary Wharf and Midtown / Fringe remain missing.",
+    "Rent unit is GBP/sq ft as quoted. The articles do not explicitly state a billing period; no per-annum conversion is inferred.",
+    "Snapshot-calculated changes and publisher-reported growth are separate. Changed baselines or samples have not been established.",
+    "Report events are historical research commentary, not a live news service. No building-level market observations are provided."
+  ],
+  "sources": [
+    {"id":"savills-2024-q4","publisher":"Savills","title":"Central London Office Market Watch Q4 2024","url":"https://www.savills.co.uk/research_articles/229130/372062-0","published_at":"2025-01-31","report_period":"2024-YE","retrieved_at":"2026-10-09T15:27:55Z","verification_status":"reviewed_excerpt","usage_note":"Short factual extracts with attribution and original links. No license to redistribute the full report or its charts has been verified; no such material is included."},
+    {"id":"savills-2025-q4","publisher":"Savills","title":"Central London Office Market Watch Q4 2025","url":"https://www.savills.co.uk/research_articles/229130/386949-0","published_at":"2026-01-30","report_period":"2025-YE","retrieved_at":"2026-10-09T15:27:55Z","verification_status":"reviewed_excerpt","usage_note":"Short factual extracts with attribution and original links. No license to redistribute the full report or its charts has been verified; no such material is included."}
+  ],
+  "evidence": [
+    {"id":"s24-city-prime","source_id":"savills-2024-q4","section":"rents","quote":"At the end of 2024, the average City prime rent stood at £98.60 per sq ft"},
+    {"id":"s24-west-prime","source_id":"savills-2024-q4","section":"rents","quote":"The average Prime rent achieved across the West End at the end of the year stood at £157.50 per sq ft"},
+    {"id":"s24-grade-a","source_id":"savills-2024-q4","section":"rents","quote":"In terms of Grade A rents, the average City rent stood at £70.51 per sq ft, which was up 2.8% on 2023; meanwhile, the West End average remained broadly stable, at £95.27 per sq ft."},
+    {"id":"s24-city-vacancy","source_id":"savills-2024-q4","section":"supply","quote":"The City market accounted for most of the fall in supply, with the City vacancy rate declining a further 90 bps to 7.9% during the quarter."},
+    {"id":"s25-city-prime","source_id":"savills-2025-q4","section":"rents","quote":"the average City Prime rent reached a new record high of £105.26 per sq ft, which was up 6.8% on the previous year."},
+    {"id":"s25-west-prime","source_id":"savills-2025-q4","section":"rents","quote":"The West End market also saw strong average prime rental growth over the year, with the average Prime rent standing at £166.61 per sq ft, up 6.1% year-on-year."},
+    {"id":"s25-grade-a","source_id":"savills-2025-q4","section":"rents","quote":"With the sustained preference for Grade A office space remaining, the average Grade A rent for the City at the end of the year stood at £74.34 per sq ft, which is up 4% on 2024, and the West End average Grade A rent stood at £99.58 per sq ft, up 5% on 2024."},
+    {"id":"s25-vacancy","source_id":"savills-2025-q4","section":"supply","quote":"Both the City and West End recorded a decline in supply over the quarter, with vacancy rates reaching 7.0% and 7.9%, respectively."},
+    {"id":"s24-quality","source_id":"savills-2024-q4","section":"leasing","quote":"recently redeveloped or comprehensively refurbished office space accounted for 68% of space acquired during 2024"},
+    {"id":"s25-quality","source_id":"savills-2025-q4","section":"leasing","quote":"lettings in recently developed or comprehensively refurbished offices accounting for 77% of space acquired during 2025"},
+    {"id":"s25-prelets","source_id":"savills-2025-q4","section":"leasing","quote":"Gibson Dunn’s pre-letting of the 9th–12th floors (153,116 sq ft), and FTI Consulting’s pre-let of the 1st–3rd (144,452 sq ft) at PNB’s 1 Exchange Square, EC2."},
+    {"id":"s25-refurbishment","source_id":"savills-2025-q4","section":"development","quote":"comprehensive refurbishments accounting for 65% of the number of schemes set for delivery over the next four years (51% by sq ft)"}
+  ],
+  "observations": [
+    {"id":"city-prime-2024","area_id":"city","source_area":"City","metric":"prime_rent","period":"2024-YE","value":98.60,"source_id":"savills-2024-q4","evidence_id":"s24-city-prime","definition_id":"savills-average-prime-achieved","unit":"GBP/sq ft"},
+    {"id":"west-prime-2024","area_id":"west_end","source_area":"West End","metric":"prime_rent","period":"2024-YE","value":157.50,"source_id":"savills-2024-q4","evidence_id":"s24-west-prime","definition_id":"savills-average-prime-achieved","unit":"GBP/sq ft"},
+    {"id":"city-grade-a-2024","area_id":"city","source_area":"City","metric":"grade_a_rent","period":"2024-YE","value":70.51,"source_id":"savills-2024-q4","evidence_id":"s24-grade-a","definition_id":"savills-average-grade-a","unit":"GBP/sq ft"},
+    {"id":"west-grade-a-2024","area_id":"west_end","source_area":"West End","metric":"grade_a_rent","period":"2024-YE","value":95.27,"source_id":"savills-2024-q4","evidence_id":"s24-grade-a","definition_id":"savills-average-grade-a","unit":"GBP/sq ft"},
+    {"id":"city-vacancy-2024","area_id":"city","source_area":"City","metric":"vacancy_rate","period":"2024-YE","value":7.9,"source_id":"savills-2024-q4","evidence_id":"s24-city-vacancy","definition_id":"savills-overall-submarket-vacancy","unit":"%"},
+    {"id":"city-prime-2025","area_id":"city","source_area":"City","metric":"prime_rent","period":"2025-YE","value":105.26,"source_id":"savills-2025-q4","evidence_id":"s25-city-prime","definition_id":"savills-average-prime-achieved","unit":"GBP/sq ft","reported_change_pct":6.8},
+    {"id":"west-prime-2025","area_id":"west_end","source_area":"West End","metric":"prime_rent","period":"2025-YE","value":166.61,"source_id":"savills-2025-q4","evidence_id":"s25-west-prime","definition_id":"savills-average-prime-achieved","unit":"GBP/sq ft","reported_change_pct":6.1},
+    {"id":"city-grade-a-2025","area_id":"city","source_area":"City","metric":"grade_a_rent","period":"2025-YE","value":74.34,"source_id":"savills-2025-q4","evidence_id":"s25-grade-a","definition_id":"savills-average-grade-a","unit":"GBP/sq ft","reported_change_pct":4.0,"reported_change_decimals":0},
+    {"id":"west-grade-a-2025","area_id":"west_end","source_area":"West End","metric":"grade_a_rent","period":"2025-YE","value":99.58,"source_id":"savills-2025-q4","evidence_id":"s25-grade-a","definition_id":"savills-average-grade-a","unit":"GBP/sq ft","reported_change_pct":5.0,"reported_change_decimals":0},
+    {"id":"city-vacancy-2025","area_id":"city","source_area":"City","metric":"vacancy_rate","period":"2025-YE","value":7.0,"source_id":"savills-2025-q4","evidence_id":"s25-vacancy","definition_id":"savills-overall-submarket-vacancy","unit":"%"},
+    {"id":"west-vacancy-2025","area_id":"west_end","source_area":"West End","metric":"vacancy_rate","period":"2025-YE","value":7.9,"source_id":"savills-2025-q4","evidence_id":"s25-vacancy","definition_id":"savills-overall-submarket-vacancy","unit":"%"}
+  ],
+  "notes": [
+    {"id":"quality-2024","title":"Flight to newer and refurbished space","period":"2024-YE","area_ids":["city","west_end"],"kind":"report_demand_driver","summary":"Savills reports that recently redeveloped or comprehensively refurbished offices accounted for 68% of Central London space acquired in 2024. Central London context, not a building or individual-submarket statistic.","source_id":"savills-2024-q4","evidence_id":"s24-quality"},
+    {"id":"quality-2025","title":"Preference for quality remains strong","period":"2025-YE","area_ids":["city","west_end"],"kind":"report_demand_driver","summary":"Savills reports that lettings in recently developed or comprehensively refurbished offices accounted for 77% of Central London space acquired in 2025. This is historical Central London context, not a submarket-specific rate.","source_id":"savills-2025-q4","evidence_id":"s25-quality"},
+    {"id":"prelets-2025","title":"City pre-lets at 1 Exchange Square","period":"2025-YE","area_ids":["city"],"kind":"report_leasing_event","summary":"Savills highlights Q4 2025 pre-lets by Gibson Dunn and FTI Consulting at 1 Exchange Square. A dated report event, not a live transaction feed or a rent observation for the building.","source_id":"savills-2025-q4","evidence_id":"s25-prelets"},
+    {"id":"refurbishment-2025","title":"Refurbishments form a larger share of planned schemes","period":"2025-YE","area_ids":["city","west_end"],"kind":"report_supply_context","summary":"Savills reports that comprehensive refurbishments represent 65% of the number of Central London schemes set for delivery over the following four years (51% by area). Forward-looking report context, not an observed completed-supply metric.","source_id":"savills-2025-q4","evidence_id":"s25-refurbishment"}
+  ]
+}

@@ -1,0 +1,22 @@
+[project]
+name = "london-office-monitor"
+version = "0.1.0"
+description = "Evidence-led London office market monitoring PoC"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+  "openai-codex==0.162.0",
+  "fastapi>=0.118,<1",
+  "uvicorn>=0.35,<1",
+  "pypdf>=6,<8",
+  "python-pptx>=1,<2",
+]
+
+[project.scripts]
+london-office = "london_office.cli:main"
+
+[build-system]
+requires = ["setuptools>=80"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["london_office*"]

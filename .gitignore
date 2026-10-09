@@ -29,6 +29,7 @@ raw/
 playwright-report/
 test-results/
 .browser/
+.pw-browsers/
 *.log
 
 # Evidence is reviewed explicitly before publication.

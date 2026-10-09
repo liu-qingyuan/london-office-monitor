@@ -52,7 +52,7 @@ HTTP 结果中的数字、比较及事实面板都由同一 Python Market Module
 
 成功结果：`{schema_version:1,session_id,run_id,status:"completed",answer,facts,calculations,sources,evidence,notes,warnings,tool_calls}`。
 
-- `answer` 是模型基于工具证据的解释。模型不能提供新的数值事实；事实/计算卡片从本轮工具返回构造，来源引用需验证。
+- `answer` 是模型基于工具证据的**定性解释**；模型自己的 `answer/warnings` 文本不能重写金额、比例、年份或日期等数值（包括拼写数量）。所有数字及其区域/指标/时期/单位/来源绑定仅在 Python 生成的事实、计算与来源对象中展示。这样防止把已见过的年份或其他区域数字误绑成价格。事实/计算卡片从本轮工具返回构造，所选对象的全部来源引用需验证。定性语义仍是 AI 解释，不承诺自动证明每一语义断言。
 - `facts` 是上述 observation；`calculations` 是上述 comparison；`sources/evidence/notes` 同上。
 - `tool_calls` 是实际 Python 工具执行：`{name,arguments,ok}`。详细输出只保存在本地 JSONL（`var/` 不提交）。
 - 工具未执行、结构化回答不合法、引用不在本轮证据中、出现无证据数值、未登录、账户模型不可用、运行超时或预算耗尽均返回清晰错误；不以离线模板伪装模型回答。

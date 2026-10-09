@@ -1,0 +1,9 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {"type":"Feature","properties":{"area_id":"city","name":"City","geometry_status":"illustrative","note":"Hand-drawn navigation selector around the City office cluster; NOT Savills' reporting footprint or an administrative boundary."},"geometry":{"type":"Polygon","coordinates":[[[-0.104,51.508],[-0.073,51.508],[-0.073,51.522],[-0.082,51.525],[-0.101,51.523],[-0.104,51.508]]]}},
+    {"type":"Feature","properties":{"area_id":"west_end","name":"West End","geometry_status":"illustrative","note":"Hand-drawn navigation selector around central West End offices; NOT the full Savills West End reporting footprint or an administrative boundary."},"geometry":{"type":"Polygon","coordinates":[[[-0.159,51.504],[-0.121,51.504],[-0.121,51.520],[-0.139,51.524],[-0.159,51.521],[-0.159,51.504]]]}},
+    {"type":"Feature","properties":{"area_id":"canary_wharf","name":"Canary Wharf","geometry_status":"illustrative","note":"Hand-drawn navigation selector; no verified same-definition market values. NOT a reporting footprint or building-level dataset."},"geometry":{"type":"Polygon","coordinates":[[[-0.027,51.500],[-0.009,51.500],[-0.009,51.512],[-0.026,51.512],[-0.027,51.500]]]}},
+    {"type":"Feature","properties":{"area_id":"midtown_fringe","name":"Midtown / Fringe","geometry_status":"illustrative","note":"Indicative navigation selector only. Midtown / Fringe is not a verified unified reporting region; this polygon does NOT define that business grouping."},"geometry":{"type":"Polygon","coordinates":[[[-0.120,51.518],[-0.105,51.524],[-0.101,51.533],[-0.116,51.533],[-0.120,51.518]]]}}
+  ]
+}

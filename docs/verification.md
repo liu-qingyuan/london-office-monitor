@@ -4,6 +4,27 @@
 
 来源：[Issue #1](https://github.com/liu-qingyuan/london-office-monitor/issues/1)、[性能 Spec #2](https://github.com/liu-qingyuan/london-office-monitor/issues/2)、`docs/spec.md`、`docs/contracts.md`。历史首版审查 fixed point 为 `d1cf15b`，不是当前 WIP 的固定基线；记录日期 2026-10-10 Asia/Shanghai，执行文件使用 UTC。
 
+## Ticket #4 冷启动／降级（用户 GPU 场景通过，整套仍未验收）
+
+固定点 `589d7cf`，生产 bundle `index-BPGZ-NYB.js`；环境为 Mac17,9 / Apple M5 Pro / 64GiB / 18 logical CPUs、Node 26.4、Python 3.12.13、项目 Chromium 156.0.8078.4 / Playwright 1.64、DPR 1、正常动画。使用本项目独立服务器 `--no-agent` 和专用浏览器；数据是 Savills 两期真实历史快照，背景是 OpenFreeMap / OpenMapTiles。没有新依赖、数据、HTTP／工具／认证合同或模型请求。
+
+- **原始基线与 RED**：新 context、HTTP cache disabled，没有 page/storage 复用；不宣称 OS、CDN、网络路线或 GPU 进程冷缓存。桌面业务呈现 358.5 / 295.6 / 286.2ms，可探索背景 4249.3 / 4207.6 / 4331.7ms。窄屏修正可见业务滚动和原视口外取样点后分别为 344.5 / 367.3 / 387.8ms、2946.5 / 3086.2 / 2969.7ms。700ms bundle delay + 始终 pending 的 remote style 明确故障注入捕获导航第 15 秒仍 Loading 的有效 RED；切换 Vacancy 又捕获 Catalog 503 错误被清空的独立 RED。
+- **定向 profile 与实现**：背景就绪等待真实建筑源及实际渲染几何；地图不因 Catalog／Market 失败停止读取真实空间背景。首次选择几何随后绑定，不新增测试 setter。MarketMap 内部以 navigationStart 计时，最晚 14.8 秒启动明确降级，给真实提示／selector 帧留 200ms；不是 10 秒前提前关闭 3D。首次 100ms 余量的修复仍失败，profile 显示 fallback 字体／shader 初始化约 78ms，状态虽在 14901.9ms 写入，首次绘制跨过截止。明确 vector/style 错误立即降级，glyph/sprite 不误判；无 WebGL 明确不可渲染、仍保留真实列表与来源。Workspace 先发本地请求，Catalog 错误与 Market 错误分别拥有，切换板块不清掉 Catalog 失败。公共 Interface、相机、历史口径与独立 Agent 不变。
+
+用户 renderer 为 **ANGLE Metal / Apple M5 Pro**，每次新的 context 和禁用缓存，从同一个 navigationStart 计时。真实 Rents 点击／窄屏两触、滚动到真实值与两期图表后的 compositor 截图给业务呈现上界；真实背景截图后输入 Zoom、等待正常动画并捕获另一张 composed frame 给“可探索”上界。建筑屋顶 patch 像素和实际相机变化证明真实空间背景，不以响应、ready flag、单次 rAF 或静态图替代。保留全部三次，不用平均或最快值：
+
+| 视窗 | 业务呈现上界 ms（三次） | 首次背景呈现上界 ms（三次） | 可探索呈现上界 ms（三次） |
+|---|---|---|---|
+| 1600×1000 | 396.9, 401.2, 409.6 | 3874.4, 4218.5, 4093.0 | 4410.5, 4751.7, 4633.2 |
+| 390×844 | 371.7, 387.7, 400.8 | 2654.2, 2543.1, 2690.4 | 3107.3, 2993.5, 3143.6 |
+
+- **异常与最短反馈**：`user-focused-final.log` 含两视窗各一次真实正常背景、pending／vector 失败及真实 GPU fallback 拾取，命令启动至退出 **29.75 秒**，全部通过，无自动重试。pending 截图提示截止 **14986.9ms**（相关合并运行另次 **14977.1ms**），背景的 10 秒失败仍保留为故障，不因降级变成正常通过。先前 GPU 拾取测试遗漏 Reset，导致把视口外 City 坐标当输入，已保留失败并使用真实 Reset／边界检查修正；未改生产拾取。`final-user-faults.log` 四项 **9.79 秒通过**：vector 明确失败（101.3ms 提示帧上界）、无 WebGL／真实列表与来源、Market 503／非 missing、Catalog 503／导航后仍错误且实际背景继续。`user-geometry-regression.log` **22.21 秒通过**，保护同尺寸不重新分配画布、布局变化后的真实 GPU 拾取、建筑内区黄色／外区不误染／切走恢复。
+- **SwiftShader 单独记录**：初次桌面诊断业务 **6182.9 / 6141.0ms**，可探索 **9489.8 / 10177.9ms**，30 秒截止前仅执行两次；原失败与 CPU profile 保留（`_resizeCanvas` self 约 2.1 秒）。软件不是用户 GPU，**没有满足用户 2／10 秒预算**。软件功能回归每种视窗一次真实背景、相机／屋顶／业务帧，聚焦记录 `meetsUserColdBudgets:false`；后续同一软件进程已有故障场景后的相关运行，两次业务为 547.5 / 521.8ms、可探索为 8863.4 / 6088.3ms，记录 true，但不能覆盖原始失败或充当三次用户验收。用户模式保持两视窗各三次和严格 2／10 秒断言。`swiftshader-functional-focused.log` 正常窄屏＋第三方背景失败／真实选择 **15.83 秒通过**；相关完整软件文件 `swiftshader-related-complete.log` **32.27 秒，6 pass、6 明确跳过**（四个用户三次重复、两个用户呈现时延案例），不是整仓库 GREEN。软件正常／故障功能覆盖保留，跳过项由上述真实硬件运行验证。
+- **完整运行限制**：最新硬件合并相关 13 项在 **60.30 秒**截止，5 pass、8 未执行；后续场景未返回完整结果，不能称 13 项通过。已用上面的独立命令完成相关覆盖，但不把分段结果冒充一次整套 GREEN；整仓库 60 秒反馈组织／已知硬件合并挂起仍属于 #5。本票未放宽门槛或运行自动重试。
+- **离线业务与模型**：`final-quick.log` 为 **27 项 Python + 类型检查／production build，通过，1.44 秒**。实时模型 **未执行**；没有重放冒充新调用。用户视觉／业务验收、Issue #1 原独立 Closure 仍未完成。
+
+原始证据保留于 `artifacts/ticket-4/`：全部 baseline／RED／首修复失败／最终逐次 JSON、完整网络 URL 与响应缓存标志、navigation/resource timing、真实输入截图、CPU profile、原始 trace、命令 wall time。`final-cold-user-*.json` 对应上表；fixture 的 £157.51 typo、无 WebGL 测试误选报告 context quote、TypeScript overload 错误也保留，明确不当作产品失败。八张局部 Mermaid 图与最终知识归属／时序／状态一致，200ms 呈现余量只是 Map Implementation，未增加 Interface。
+
 ## Ticket #3 热态修复（逐场景通过，整体仍未验收）
 
 验证基于 `7a3729b` 之后的本票改动，记录目录 `artifacts/ticket-3/`；不把下方历史基线当作本次结果。环境：Darwin arm64 / Mac17,9、Apple M5 Pro、64GiB、18 logical CPUs；项目 Playwright 1.64 / Chromium 156.0.8078.4、DPR 1、真实 OpenFreeMap、Savills 两期历史快照、正常动画。Desktop Chrome 的 UA 是测试设备预设，不代表主机是 Windows。生产 bundle `index-CRpY5R40.js`，无新依赖／数据／HTTP／工具／认证／模型调用。

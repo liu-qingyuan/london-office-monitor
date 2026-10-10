@@ -52,7 +52,6 @@ export class MarketMap {
   private selected: AreaId = 'city';
   private basemapStatus: BasemapStatus = 'loading';
   private timer: ReturnType<typeof setTimeout> | null = null;
-  private vectorError = false;
   private buildingSelectionSignature = '';
   private selectedBuildings: GeoJSON.Feature<GeoJSON.Polygon>[] = [];
   private partIds = new globalThis.Map<string,number>();
@@ -71,9 +70,18 @@ export class MarketMap {
   ) {}
 
   start(): void {
+    // performance.now() is relative to this document's navigationStart, including
+    // bundle loading and synchronous setup. Reserve the last 200ms for the
+    // fallback's first selector/label frame (including shader/font setup), not
+    // another 15s after map.start().
+    this.timer = setTimeout(() => {
+      if (this.basemapStatus === 'loading') this.basemapFailed();
+    }, Math.max(0, 14800 - performance.now()));
     try {
       const probe = document.createElement('canvas');
       if (!probe.getContext('webgl2')) {
+        this.basemapStatus = 'unavailable';
+        this.clearTimer();
         this.onStatus('WebGL2 unavailable · map cannot render. The market list remains available.');
         return;
       }
@@ -102,8 +110,7 @@ export class MarketMap {
         // Glyph/sprite/label errors are not failures of the vector background.
         const sourceId = (event as typeof event & {sourceId?: string}).sourceId;
         const detail = event.error?.message ?? '';
-        if (sourceId === 'openmaptiles' || detail.includes('/planet')) this.vectorError = true;
-        if (!this.map?.isStyleLoaded() && (detail.includes('/styles/dark') || detail.includes(remoteStyle))) this.basemapFailed();
+        if (sourceId === 'openmaptiles' || detail.includes('/planet') || detail.includes(remoteStyle)) this.basemapFailed();
       });
       this.map.on('style.load', () => {
         if (!this.map) return;
@@ -120,11 +127,10 @@ export class MarketMap {
       this.map.on('idle', () => {
         if (this.updateSelectedBuildings()) this.draw();
         if (!this.map || this.basemapStatus !== 'loading' || !this.map.getLayer(buildingLayer)) return;
-        if (this.map.isSourceLoaded('openmaptiles')) {
-          if (this.vectorError && !this.renderedBuildingCount()) {
-            this.basemapFailed();
-            return;
-          }
+        // A loaded vector source alone can precede the GeoJSON building worker
+        // and the actual extrusion frame. At lower zooms the style intentionally
+        // has no 3D buildings; do not require nonexistent volumes there.
+        if (this.map.isSourceLoaded('openmaptiles') && this.map.isSourceLoaded(buildingSource) && (this.map.getZoom() < 14 || this.renderedBuildingCount() > 0)) {
           this.basemapStatus = 'available';
           this.clearTimer();
           this.onStatus('City background ready · OpenFreeMap');
@@ -149,12 +155,11 @@ export class MarketMap {
       });
       this.map.on('move', () => this.onCamera?.(this.camera()));
       this.map.on('moveend', () => { this.buildingsDirty = true; this.onHover(null,0,0); this.draw(); });
-      this.timer = setTimeout(() => {
-        if (this.basemapStatus === 'loading') this.basemapFailed();
-      }, 18000);
       this.onStatus('Loading OpenFreeMap background · illustrative selectors');
       this.onCamera?.(this.camera());
     } catch {
+      this.basemapStatus = 'unavailable';
+      this.clearTimer();
       this.onStatus('Map rendering unavailable · market data remains accessible in the list.');
     }
   }
@@ -217,7 +222,12 @@ export class MarketMap {
   }
 
   update(geometry: Geometry | null, market: Market | null, areas: Area[], selected: AreaId): void {
-    if (geometry) this.geometry = geometry;
+    if (geometry) {
+      // Background rendering is independent of Market/Catalog availability.
+      // If its footprints arrived first, bind the first real selectors now.
+      if (!this.geometry) { this.buildingsDirty = true; this.buildingSelectionSignature = ''; }
+      this.geometry = geometry;
+    }
     this.market = market;
     this.areas = areas;
     const changed = this.selected !== selected;
@@ -232,7 +242,7 @@ export class MarketMap {
   private updateSelectedBuildings(): boolean {
     const geometry = this.geometry;
     const source = this.map?.getSource<GeoJSONSource>(buildingSource);
-    if (!this.map || !source || !geometry || !this.map.getSource('openmaptiles') || !this.buildingsDirty) return false;
+    if (!this.map || !source || !this.map.getSource('openmaptiles') || !this.buildingsDirty) return false;
     this.buildingsDirty = false;
     if (this.map.getZoom() < 14) {
       const changed = this.selectedBuildings.length > 0;
@@ -241,7 +251,7 @@ export class MarketMap {
       if (changed) source.setData({type:'FeatureCollection',features:[]});
       return changed;
     }
-    const selectors = geometry.features.map(feature => ({id:feature.properties.area_id,polygons:feature.geometry.type === 'Polygon' ? [feature.geometry.coordinates] : feature.geometry.coordinates}));
+    const selectors = geometry?.features.map(feature => ({id:feature.properties.area_id,polygons:feature.geometry.type === 'Polygon' ? [feature.geometry.coordinates] : feature.geometry.coordinates})) ?? [];
     const parts = new globalThis.Map<string, GeoJSON.Feature<GeoJSON.Polygon>>();
     const bounds = this.map.getBounds();
     for (const feature of this.map.querySourceFeatures('openmaptiles',{sourceLayer:'building'})) {

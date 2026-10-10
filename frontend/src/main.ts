@@ -116,6 +116,7 @@ let selected: AreaId = 'city';
 let metric: MetricId = 'prime_rent';
 let period: PeriodId = '2025-YE';
 let loading = false;
+let catalogError: string | null = null;
 let marketError: string | null = null;
 let detailError: string | null = null;
 let trend: {previous: Market; current: Market} | null = null;
@@ -174,17 +175,17 @@ function renderSection(): void {
   const kind: Partial<Record<SectionId,string>> = {leasing:'report_leasing_event',supply:'report_supply_context',demand:'report_demand_driver'};
   if (activeSection === 'macro' || activeSection === 'vacancy') return;
   const notes = market?.notes.filter(note => activeSection === 'news' || note.kind === kind[activeSection]) ?? [];
-  board.innerHTML += `<div class="section-report-head"><h3>Historical report context</h3><span>${escapeHtml(periodName(period))}</span></div><p class="section-limit">Source scope applies to each excerpt. Central London context is not an individual-submarket series or live news.</p>${loading ? '<p class="muted">Loading existing report context…</p>' : marketError ? '<p class="alert error">Report context unavailable because the Market API failed. This is not a data gap.</p>' : notes.length && market ? notesBlock(notes,market.sources,market.evidence) : '<p class="muted">No report context for this topic in the selected snapshot.</p>'}`;
+  board.innerHTML += `<div class="section-report-head"><h3>Historical report context</h3><span>${escapeHtml(periodName(period))}</span></div><p class="section-limit">Source scope applies to each excerpt. Central London context is not an individual-submarket series or live news.</p>${catalogError || marketError ? `<p class="alert error">Report context unavailable because the ${catalogError ? 'Catalog' : 'Market'} API failed. This is not a data gap.</p>` : loading ? '<p class="muted">Loading existing report context…</p>' : notes.length && market ? notesBlock(notes,market.sources,market.evidence) : '<p class="muted">No report context for this topic in the selected snapshot.</p>'}`;
 }
 function renderMarket(): void {
   const status = $('#global-status');
-  status.className = marketError ? 'alert error' : loading ? 'alert loading' : '';
-  status.textContent = marketError ? `Market API error · ${marketError}` : loading ? 'Loading reported market values…' : '';
+  status.className = catalogError || marketError ? 'alert error' : loading ? 'alert loading' : '';
+  status.textContent = catalogError ? `Catalog API error · ${catalogError}. Reload to retry.` : marketError ? `Market API error · ${marketError}` : loading ? 'Loading reported market values…' : '';
   $('#period-caption').textContent = catalog?.periods.find(p => p.id === period)?.label ?? period;
   const available = market?.observations.filter(o => o.status === 'available' && o.value !== null).length;
-  $('#coverage-summary').textContent = marketError ? 'Market data unavailable — this is not a coverage gap.' : available === undefined ? 'Loading reported observations…' : `${available} of ${catalog?.areas.length ?? 0} areas have reported values for this selection.`;
+  $('#coverage-summary').textContent = catalogError ? 'Area catalog unavailable — this is not a coverage gap.' : marketError ? 'Market data unavailable — this is not a coverage gap.' : available === undefined ? 'Loading reported observations…' : `${available} of ${catalog?.areas.length ?? 0} areas have reported values for this selection.`;
   $('#agent-context').textContent = `Map selection: ${catalog?.areas.find(a => a.id === selected)?.name ?? selected} · ${catalog?.metrics.find(m => m.id === metric)?.label ?? metric} · ${catalog?.periods.find(p => p.id === period)?.label ?? period}. Your question can ask about another market.`;
-  if (!catalog) { $('#area-list').innerHTML = '<p class="empty-message">Loading catalog…</p>'; return; }
+  if (!catalog) { $('#area-list').innerHTML = `<p class="empty-message">${catalogError ? 'Area catalog unavailable. No market data can be shown.' : 'Loading catalog…'}</p>`; return; }
   $('#area-list').innerHTML = catalog.areas.map((area, index) => {
     const observation = market?.observations.find(o => o.area_id === area.id);
     const value = marketError ? 'Market API unavailable' : loading ? 'Loading…' : formatValue(observation);
@@ -232,6 +233,7 @@ async function getMarket(requestMetric: MetricId, requestPeriod: PeriodId, area?
   return data;
 }
 async function refresh(): Promise<void> {
+  if (!catalog) return;
   const sequence = ++viewSequence;
   ++detailSequence;
   market = null;
@@ -305,7 +307,7 @@ function notesBlock(notes: Note[], sources: Source[], evidence: Evidence[]): str
 function renderDetail(): void {
   const target = $('#detail-content');
   const area = catalog?.areas.find(a => a.id === selected);
-  if (!catalog) { target.innerHTML = '<p class="empty-message">Waiting for catalog…</p>'; return; }
+  if (!catalog) { target.innerHTML = `<p class="empty-message">${catalogError ? 'Catalog unavailable.' : 'Waiting for catalog…'}</p>`; return; }
   if (marketError) { target.innerHTML = `<p class="alert error">Market API error · ${escapeHtml(marketError)}. This is not a missing observation.</p>`; return; }
   if (loading) { target.innerHTML = '<p class="empty-message">Loading area values…</p>'; return; }
   if (detailLoading || !trend && !detailError) { target.innerHTML = `<h3>${escapeHtml(area?.name || selected)}</h3><p class="empty-message">Loading two reported snapshots and Python comparison…</p>`; return; }
@@ -520,17 +522,16 @@ $('#top-view').addEventListener('click',()=>map.setPitch(0));
 $('#reset-map').addEventListener('click',()=>{ map.reset(); $('#map-tooltip').hidden=true; });
 $('#dismiss-instructions').addEventListener('click',()=>{ $('#map-instructions').hidden=true; });
 $('#map-info-toggle').addEventListener('click',()=>{const info=$('#map-info');info.hidden=!info.hidden;$('#map-info-toggle').setAttribute('aria-expanded',String(!info.hidden));});
-map.start();
 renderMarket(); renderDetail();
+// Start local I/O before synchronous WebGL setup. Neither response handling nor
+// the workspace's event bindings wait for external styles, glyphs or tiles.
 void api<Catalog>('/api/catalog').then(result => {
   catalog = result;
   renderFilters();
   void refresh();
 }).catch(error => {
-  marketError = message(error);
+  catalogError = message(error);
   loading = false;
-  $('#global-status').className = 'alert error';
-  $('#global-status').textContent = `Catalog API error · ${marketError}. Reload to retry.`;
-  $('#area-list').innerHTML = '<p class="empty-message">Area catalog unavailable. No market data can be shown.</p>';
-  $('#detail-content').innerHTML = '<p class="empty-message">Catalog unavailable.</p>';
+  renderMarket(); renderDetail(); renderSection();
 });
+map.start();

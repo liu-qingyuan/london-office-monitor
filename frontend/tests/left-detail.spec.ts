@@ -21,10 +21,17 @@ test('same-size selections preserve the shared canvas while real layout changes 
   });
   await page.goto('/');
   await expect.poll(async()=>(await state(page)).renderedBuildingCount,{timeout:15000}).toBeGreaterThan(20);
-  await page.getByRole('button',{name:'Rents',exact:true}).click();
-  await page.locator('.area-row[data-area="city"]').click();
+  await expect(page.locator('#market-panel')).toBeHidden();
+  await clickAreaOnMap(page,[-.089,51.516]);
+  await expect(page.locator('#market-panel')).toBeVisible();
+  await expect(page.locator('#detail-content h3')).toHaveText('City');
+  await expect(page.locator('.workspace-nav-item[data-section="market"]')).toHaveAttribute('aria-pressed','true');
   await expect(page.locator('#detail-content .chart-bar')).toHaveCount(2);
   await expect.poll(async()=>(await state(page)).moving).toBe(false);
+  const insetCanvas = (await page.locator('.maplibregl-canvas').boundingBox())!;
+  const insetMap = (await page.locator('#map').boundingBox())!;
+  expect(insetCanvas.width).toBe(insetMap.width);
+  expect(insetMap.x).toBeGreaterThan(300);
   // Wait for the target view's actual tile traffic, not only the camera flag.
   await page.waitForLoadState('networkidle');
   // Retain only the settled segment of the observer's original array.
@@ -60,9 +67,23 @@ test('same-size selections preserve the shared canvas while real layout changes 
   expect(canvas.width).toBe(viewport.width);
   await clickAreaOnMap(page,[-.089,51.516]);
   await expect(page.locator('#detail-content h3')).toHaveText('City');
+  await page.locator('.area-row[data-area="west_end"]').click();
+  await expect(page.locator('#detail-content h3')).toHaveText('West End');
+  await expect(page.locator('.area-row[data-area="west_end"]')).toHaveAttribute('aria-pressed','true');
+  await expect(page.locator('#detail-content .snapshot-chart')).toContainText('£166.61');
+  await expect.poll(async()=>(await state(page)).moving).toBe(false);
+  const pose = await state(page);
+  await page.getByRole('button',{name:'Close workspace',exact:true}).click();
+  await expect(page.locator('#market-panel')).toBeHidden();
+  await expect(page.locator('#map')).toHaveCSS('width','1600px');
+  await expect.poll(async()=>{
+    const next = await state(page);
+    return {zoom:next.zoom,bearing:next.bearing,pitch:next.pitch,center:next.center};
+  }).toEqual({zoom:pose.zoom,bearing:pose.bearing,pitch:pose.pitch,center:pose.center});
 });
 
 const state = (page: Page) => page.evaluate(() => window.__officeMapDebug!.state());
+const performanceSamples = process.env.OFFICE_PERFORMANCE_REPEAT==='1' ? 3 : 1;
 async function clickAreaOnMap(page: Page,center: [number,number]): Promise<void> {
   await expect.poll(async()=>(await state(page)).moving).toBe(false);
   const point = await page.evaluate(coordinates=>window.__officeMapDebug!.project(coordinates),center);
@@ -75,25 +96,15 @@ async function clickAreaOnMap(page: Page,center: [number,number]): Promise<void>
 
 // Inspect pixels from the real WebGL canvas, not a selection setter or fake map.
 async function amberPixelsNear(page: Page,center: [number,number],region = {dx:-140,dy:-23,width:280,height:46}): Promise<number> {
-  const png = (await page.locator('.maplibregl-canvas').screenshot()).toString('base64');
-  return page.evaluate(async({png,center,region})=>{
-    const point = window.__officeMapDebug!.project(center)!;
-    const image = await createImageBitmap(await (await fetch(`data:image/png;base64,${png}`)).blob());
-    const canvas = document.createElement('canvas');
-    canvas.width = image.width; canvas.height = image.height;
-    const context = canvas.getContext('2d')!;
-    context.drawImage(image,0,0);
-    const width = Math.min(region.width,image.width), height = Math.min(region.height,image.height);
-    const x = Math.max(0,Math.min(image.width-width,Math.round(point.x)+region.dx));
-    const y = Math.max(0,Math.min(image.height-height,Math.round(point.y)+region.dy));
-    const pixels = context.getImageData(x,y,width,height).data;
-    let amber = 0;
-    for (let index=0;index<pixels.length;index+=4) {
-      if (pixels[index]!>=180 && pixels[index+1]!>=115 && pixels[index+1]!<=230 && pixels[index+2]!<=130) amber++;
-    }
-    image.close();
-    return amber;
-  },{png,center,region});
+  const png = await page.locator('.maplibregl-canvas').screenshot();
+  const point = await page.evaluate(center=>window.__officeMapDebug!.project(center)!,center);
+  // As in the hot/cold samples, decode outside the application GPU process.
+  // The crop and amber predicate are identical; no extra 2D canvas allocations
+  // can contaminate this selection or the next test's renderer.
+  return Number(execFileSync('../.venv/bin/python',['-c',
+    'import io,sys; from PIL import Image; im=Image.open(io.BytesIO(sys.stdin.buffer.read())).convert("RGB"); x,y,w,h=map(int,sys.argv[1:]); w,h=min(w,im.width),min(h,im.height); x,y=max(0,min(im.width-w,x)),max(0,min(im.height-h,y)); p=im.crop((x,y,x+w,y+h)).tobytes(); print(sum(r>=180 and 115<=g<=230 and b<=130 for r,g,b in zip(p[0::3],p[1::3],p[2::3])))',
+    String(Math.round(point.x)+region.dx),String(Math.round(point.y)+region.dy),String(region.width),String(region.height)
+  ],{input:png}).toString());
 }
 
 // Chromium Event Timing includes input queueing and the next presented frame.
@@ -144,7 +155,7 @@ for (const viewport of [{width:1600,height:1000},{width:390,height:844}]) {
       });
       const samples: {kind:string;attempt:number;feedbackUpperMs:number;completeUpperMs:number;amber:number;tilesRequested:string[]}[] = [];
       try {
-        for (const kind of ['navigation','list','map']) for (let attempt=0;attempt<3;attempt++) {
+        for (const kind of ['navigation','list','map']) for (let attempt=0;attempt<performanceSamples;attempt++) {
           if (kind!=='navigation') {
             // Each measured City input changes a different selection, not an
             // idempotent reselect that could miss stale labels/paint/detail.
@@ -205,7 +216,7 @@ for (const viewport of [{width:1600,height:1000},{width:390,height:844}]) {
           expect.soft(amber).toBeGreaterThan(100); // Roof patch below the label, not an HTML selection swatch.
         }
       } finally {
-        const evidence = {environment,viewport,build:process.env.OFFICE_PRODUCTION==='1' ? 'production' : 'development',cache:'target view and real City detail warmed before measurement',samples,chats};
+        const evidence = {environment,viewport,build:process.env.OFFICE_PRODUCTION==='1' ? 'production' : 'development',cache:'target view and real City detail warmed before measurement',sampleCount:performanceSamples,samples,chats};
         console.log(JSON.stringify(evidence));
         await testInfo.attach('hot-input-measurements',{body:JSON.stringify(evidence,null,2),contentType:'application/json'});
       }
@@ -216,66 +227,12 @@ for (const viewport of [{width:1600,height:1000},{width:390,height:844}]) {
   });
 }
 
-test('a real map click opens the integrated details and list selection keeps the resized map in sync',async({page,request})=>{
-  test.setTimeout(45000);
-  await page.setViewportSize({width:1600,height:1000});
-  const catalog = await (await request.get('/api/catalog')).json() as Catalog;
-  const city = catalog.areas.find(area=>area.id==='city')!;
-  await page.goto('/');
-  await expect.poll(async()=>(await state(page)).renderedBuildingCount,{timeout:30000}).toBeGreaterThan(20);
-  await expect(page.locator('#market-panel')).toBeHidden();
-  await clickAreaOnMap(page,city.center);
-  await expect(page.locator('#market-panel')).toBeVisible();
-  await expect(page.locator('#detail-content h3')).toHaveText('City');
-  await expect(page.locator('.workspace-nav-item[data-section="market"]')).toHaveAttribute('aria-pressed','true');
-  await expect(page.locator('#detail-content .chart-bar')).toHaveCount(2);
-  await expect.poll(async()=>(await state(page)).moving).toBe(false);
-  const canvas = (await page.locator('.maplibregl-canvas').boundingBox())!;
-  const viewport = (await page.locator('#map').boundingBox())!;
-  expect(canvas.width).toBe(viewport.width);
-  expect(viewport.x).toBeGreaterThan(300);
-  await page.locator('.area-row[data-area="west_end"]').click();
-  await expect(page.locator('#detail-content h3')).toHaveText('West End');
-  await expect(page.locator('.area-row[data-area="west_end"]')).toHaveAttribute('aria-pressed','true');
-  await expect(page.locator('#detail-content .snapshot-chart')).toContainText('£166.61');
-  await expect.poll(async()=>(await state(page)).moving).toBe(false);
-  const pose = await state(page);
-  await page.getByRole('button',{name:'Close workspace',exact:true}).click();
-  await expect(page.locator('#market-panel')).toBeHidden();
-  await expect(page.locator('#map')).toHaveCSS('width','1600px');
-  await expect.poll(async()=>{
-    const next = await state(page);
-    return {zoom:next.zoom,bearing:next.bearing,pitch:next.pitch,center:next.center};
-  }).toEqual({zoom:pose.zoom,bearing:pose.bearing,pitch:pose.pitch,center:pose.center});
-});
-
-test('amber selection and visible labels remain independent of verified values and genuine data gaps',async({page,request})=>{
-  test.setTimeout(45000);
-  await page.setViewportSize({width:1600,height:1000});
-  const catalog = await (await request.get('/api/catalog')).json() as Catalog;
-  await page.goto('/');
-  await expect.poll(async()=>(await state(page)).renderedBuildingCount,{timeout:30000}).toBeGreaterThan(20);
-  await page.getByRole('button',{name:'Rents',exact:true}).click();
-  for (const id of ['city','canary_wharf'] as const) {
-    const area = catalog.areas.find(item=>item.id===id)!;
-    await page.locator(`.area-row[data-area="${id}"]`).click();
-    await expect(page.locator('#detail-content h3')).toHaveText(area.name);
-    await expect.poll(async()=>(await state(page)).moving).toBe(false);
-    await expect.poll(()=>amberPixelsNear(page,area.center),{timeout:20000}).toBeGreaterThan(70);
-    await expect(page.locator('.area-row[aria-pressed="true"]')).toHaveCount(1);
-  }
-  await expect(page.locator('#detail-content .detail-pill')).toHaveText('COVERAGE GAP');
-  await expect(page.locator('#detail-content')).toContainText('Missing does not mean zero');
-  await expect(page.locator('#detail-content .chart-bar')).toHaveCount(0);
-  await expect(page.locator('.map-legend')).toContainText('Selected area');
-  await expect(page.locator('.map-legend')).toContainText('Data gap');
-});
-
-test('map-provided 3D buildings turn amber inside the current illustrative selector and revert when selection moves',async({page,request})=>{
+test('map-provided 3D buildings and labels track selection, restore outside roofs, and keep genuine gaps distinct',async({page,request})=>{
   test.setTimeout(60000);
   await page.setViewportSize({width:1600,height:1000});
   const catalog = await (await request.get('/api/catalog')).json() as Catalog;
   const city = catalog.areas.find(area=>area.id==='city')!;
+  const canary = catalog.areas.find(area=>area.id==='canary_wharf')!;
   const roofs = {dx:-170,dy:35,width:340,height:140};
   await page.goto('/');
   await expect.poll(async()=>(await state(page)).renderedBuildingCount,{timeout:30000}).toBeGreaterThan(20);
@@ -284,6 +241,9 @@ test('map-provided 3D buildings turn amber inside the current illustrative selec
   await expect.poll(async()=>(await state(page)).moving).toBe(false);
   await page.getByRole('button',{name:'Reset map',exact:true}).click();
   await expect.poll(async()=>(await state(page)).moving).toBe(false);
+  await expect(page.locator('#detail-content h3')).toHaveText(city.name);
+  await expect(page.locator('.area-row[aria-pressed="true"]')).toHaveCount(1);
+  await expect.poll(()=>amberPixelsNear(page,city.center),{timeout:20000}).toBeGreaterThan(70);
   // A roof sample below the label, well inside City: an amber outline alone
   // cannot satisfy this. It inspects the actual map, not a styled HTML swatch.
   await expect.poll(()=>amberPixelsNear(page,city.center,roofs),{timeout:20000}).toBeGreaterThan(800);
@@ -299,6 +259,16 @@ test('map-provided 3D buildings turn amber inside the current illustrative selec
   await expect.poll(async()=>(await state(page)).moving).toBe(false);
   await expect.poll(()=>amberPixelsNear(page,city.center,roofs),{timeout:20000}).toBeLessThan(selectedRoofs/4);
   await expect.poll(async()=>(await state(page)).renderedBuildingCount).toBeGreaterThan(20);
+  await page.locator('.area-row[data-area="canary_wharf"]').click();
+  await expect(page.locator('#detail-content h3')).toHaveText(canary.name);
+  await expect.poll(async()=>(await state(page)).moving).toBe(false);
+  await expect.poll(()=>amberPixelsNear(page,canary.center),{timeout:20000}).toBeGreaterThan(70);
+  await expect(page.locator('.area-row[aria-pressed="true"]')).toHaveCount(1);
+  await expect(page.locator('#detail-content .detail-pill')).toHaveText('COVERAGE GAP');
+  await expect(page.locator('#detail-content')).toContainText('Missing does not mean zero');
+  await expect(page.locator('#detail-content .chart-bar')).toHaveCount(0);
+  await expect(page.locator('.map-legend')).toContainText('Selected area');
+  await expect(page.locator('.map-legend')).toContainText('Data gap');
 });
 
 test('the selected metric, period, chart and source summaries are readable in the left detail region',async({page,request})=>{
@@ -358,5 +328,10 @@ test.describe('integrated touch layout',()=>{
     await expect(page.locator('#market-panel')).toBeHidden();
     await expect(page.locator('#map')).toHaveCSS('height','844px');
     await expect(entry).toBeVisible();
+    await page.getByRole('button',{name:'Reset map',exact:true}).tap();
+    await expect.poll(async()=>(await state(page)).renderedBuildingCount,{timeout:10000}).toBeGreaterThan(20);
+    await expect(page.locator('.area-row')).toHaveCount(4);
+    await expect.poll(()=>state(page)).toMatchObject({webgl2:true,buildings3d:true});
+    await test.info().attach('mobile-overview',{body:await page.screenshot(),contentType:'image/png'});
   });
 });

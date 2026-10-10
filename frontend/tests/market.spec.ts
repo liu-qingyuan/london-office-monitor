@@ -1,6 +1,7 @@
 import {test, expect} from '@playwright/test';
 import {openSection} from './navigation';
 import {mkdir} from 'node:fs/promises';
+import {execFileSync} from 'node:child_process';
 import type {Catalog, Market} from '../src/types';
 
 const query = (metric = 'prime_rent', period = '2025-YE', area?: string) => {
@@ -119,6 +120,41 @@ test('unavailable external background preserves real data and deck selection geo
   expect(rect).not.toBeNull();
   await page.mouse.move(rect!.x + point!.x, rect!.y + point!.y);
   await expect(page.locator('#map-tooltip')).toContainText('City');
+});
+
+test('explicit synthetic Python conflict stays distinct from missing, API errors and zero values',async({page},testInfo)=>{
+  // Temporary synthetic snapshot at the existing Market Seam; never installed
+  // as production data, a model response, or normal-map acceptance.
+  const fixture = JSON.parse(execFileSync('../.venv/bin/python',['-c',`
+import json, tempfile
+from pathlib import Path
+from london_office.data import ROOT
+from london_office.market import Market
+doc = json.loads((ROOT / "data/snapshot.json").read_text())
+doc["dataset"]["data_kind"] = "synthetic_fixture"
+for row in list(doc["observations"]):
+    if row["area_id"] == "city" and row["metric"] == "prime_rent":
+        doc["observations"].append(dict(row, id="SYNTHETIC-" + row["id"], value=999))
+with tempfile.TemporaryDirectory() as tmp:
+    path = Path(tmp) / "synthetic-conflict.json"
+    path.write_text(json.dumps(doc))
+    market = Market(path)
+    print(json.dumps({period: market.query(metric="prime_rent", period=period) for period in ["2024-YE", "2025-YE"]}))
+`]).toString()) as Record<string,Market>;
+  await testInfo.attach('synthetic-conflict-input',{body:JSON.stringify(fixture),contentType:'application/json'});
+  await page.route('**/api/market?*',route=>route.fulfill({json:fixture[new URL(route.request().url()).searchParams.get('period')!]}));
+  await page.route('https://tiles.openfreemap.org/**',route=>route.abort());
+  await page.goto('/');
+  await openSection(page,'Rents');
+  await expect(page.locator('#detail-content .detail-pill')).toHaveText('CONFLICT');
+  await expect(page.locator('#detail-content .selected-observation')).toContainText('Conflicting evidence');
+  await expect(page.locator('#detail-content .chart-bar')).toHaveCount(0);
+  await expect(page.locator('#detail-content .comparison')).toContainText('Not calculated');
+  await expect(page.locator('#detail-content')).not.toContainText('£999');
+  await expect(page.locator('#global-status')).not.toContainText('API error');
+  await page.locator('.area-row[data-area="canary_wharf"]').click();
+  await expect(page.locator('#detail-content .detail-pill')).toHaveText('COVERAGE GAP');
+  await expect(page.locator('#detail-content')).toContainText('Missing does not mean zero');
 });
 
 test('question suggestions do not silently call the agent', async ({page}) => {

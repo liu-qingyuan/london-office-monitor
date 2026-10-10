@@ -3,8 +3,11 @@ import {mkdir,writeFile} from 'node:fs/promises';
 import {execFileSync} from 'node:child_process';
 
 const state = (page: Page) => page.evaluate(()=>window.__officeMapDebug!.state());
-const artifactDir = '../artifacts/ticket-4';
+const artifactDir = process.env.OFFICE_EVIDENCE_DIR ? `${process.env.OFFICE_EVIDENCE_DIR}/cold` : '../artifacts/ticket-4';
 const userRenderer = process.env.OFFICE_USER_RENDERER==='1';
+// The complete regression runs every scenario once. Explicit performance
+// acceptance repeats the identical input in three independent contexts.
+const samples = userRenderer && process.env.OFFICE_PERFORMANCE_REPEAT==='1' ? 3 : 1;
 test.describe.configure({retries:0});
 
 test('pending background degrades by the first navigation deadline while business stays usable',async({page},testInfo)=>{
@@ -166,9 +169,8 @@ for (const viewport of [{width:1600,height:1000},{width:390,height:844}]) {
   test.describe(`cold startup ${viewport.width} / ${userRenderer ? 'user budgets' : 'software functional'}`,()=>{
     test.use({viewport,hasTouch:viewport.width===390});
     test.describe.configure({retries:0});
-    for (let attempt=0;attempt<3;attempt++) {
+    for (let attempt=0;attempt<samples;attempt++) {
       test(`real business and explorable 3D from first navigation ${attempt+1}`,async({page},testInfo)=>{
-        test.skip(!userRenderer && attempt>0,'Three independent samples enforce user-renderer performance; SwiftShader runs one real functional sample per viewport, with all diagnostic times retained.');
         test.setTimeout(15000);
         await mkdir(artifactDir,{recursive:true});
         const prefix = `${process.env.TICKET4_EVIDENCE ?? process.env.TICKET4_PROFILE ?? 'cold'}-${process.env.OFFICE_USER_RENDERER==='1' ? 'user' : 'swiftshader'}-${viewport.width}-${attempt+1}`;
@@ -186,7 +188,7 @@ for (const viewport of [{width:1600,height:1000},{width:390,height:844}]) {
         page.on('console',message=>{ if (['error','warning'].includes(message.type())) warnings.push(message.text()); });
         let chats = 0;
         await page.route('**/api/chat',route=>{ chats++; return route.abort(); });
-        const samples: Record<string,unknown> = {viewport,attempt:attempt+1,benchmark:userRenderer ? 'user 2s/10s budgets' : 'software functional; not user performance acceptance',cache:'new browser context; HTTP cache disabled; no page/storage reuse',build:process.env.OFFICE_PRODUCTION==='1' ? 'production' : 'development'};
+        const samples: Record<string,unknown> = {viewport,attempt:attempt+1,sampleCount:userRenderer && process.env.OFFICE_PERFORMANCE_REPEAT==='1' ? 3 : 1,benchmark:userRenderer ? 'user 2s/10s budgets' : 'software functional; not user performance acceptance',cache:'new browser context; HTTP cache disabled; no page/storage reuse',build:process.env.OFFICE_PRODUCTION==='1' ? 'production' : 'development'};
         if (process.env.TICKET4_PROFILE) { await client.send('Profiler.enable'); await client.send('Profiler.start'); }
         try {
           await page.goto('/',{waitUntil:'domcontentloaded'});
@@ -211,6 +213,15 @@ for (const viewport of [{width:1600,height:1000},{width:390,height:844}]) {
           samples.firstMapPresentedUpperMs = await page.evaluate(()=>performance.now());
           await writeFile(`${artifactDir}/${prefix}-map.png`,firstMap);
           const initial = await state(page);
+          expect(initial).toMatchObject({webgl2:true,buildings3d:true,interleaved:true,deckCanvasShared:true,geometryCount:4});
+          expect(initial.pitch).toBeCloseTo(55,1);
+          await expect(page.locator('.maplibregl-ctrl-scale')).toBeVisible();
+          await expect(page.locator('#coverage-summary')).toContainText('2 of 4');
+          await page.getByRole('button',{name:'Map information',exact:true}).click();
+          await expect(page.locator('#map-info')).toContainText('not verified height surveys');
+          // The information card overlaps its toggle in the narrow layout;
+          // close through the same focused button's real keyboard activation.
+          await page.getByRole('button',{name:'Map information',exact:true}).press('Enter');
           // Actual camera input and a second composed frame prove this is a live
           // spatial background, not a style-loaded flag or a static picture.
           await page.getByRole('button',{name:'Zoom in',exact:true}).click();

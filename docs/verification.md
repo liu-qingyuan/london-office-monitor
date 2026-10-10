@@ -4,6 +4,59 @@
 
 来源：[Issue #1](https://github.com/liu-qingyuan/london-office-monitor/issues/1)、[性能 Spec #2](https://github.com/liu-qingyuan/london-office-monitor/issues/2)、`docs/spec.md`、`docs/contracts.md`。历史首版审查 fixed point 为 `d1cf15b`，不是当前 WIP 的固定基线；记录日期 2026-10-10 Asia/Shanghai，执行文件使用 UTC。
 
+## Ticket #5 验证反馈（硬件绿色增量；软件闭环未完成，保持 open）
+
+本轮 fixed point `185ed43a4592b4a1dc8887da4cd67cc94cfead0b`。只修改既有测试组织、npm 命令和验证文档，不改生产 Module／Interface／状态机；本票局部 Mermaid Gate 为“不需要图”。环境为 Mac17,9 / Apple M5 Pro / 64GiB / 18 logical CPUs、Node 25.9.0、Python 3.12.13、项目 Playwright 1.64 / Chromium 156.0.8078.4；生产 bundle `index-DekzR4Sk.js`，DPR 1，正常动画，1600×1000／390×844。所有服务器独立绑定 8018、`--no-agent`；数据仍为 Savills 两期真实历史摘录，背景为 OpenFreeMap。
+
+### 已交付的完整增量
+
+- `frontend/package.json` 复用 unittest／tsc／Vite／Playwright，增加 `check:quick`、`check:focused -- <file> [-g ...]`、`check:full`。计时从 npm 命令启动至退出，包括本轮 build、服务器／浏览器、失败截图／trace 和 JSON／HTML 报告；整数 `SECONDS` 留退出余量，Playwright 全局截止扣除此前构建时间，超限返回非零。依赖／浏览器安装不计时。普通编辑只用最短相关层，完整层用于阶段收尾。
+- `check:focused`／`check:full` 每次建立唯一 `artifacts/checks/<UTC>-<PID>/`，不覆盖首失败。所有 tests（包括 CI）关闭自动重试；原 `test:e2e` 保留。两个 worker 的每个测试仍有独立 context，不共享 page／storage；三次独立性能验收显式使用 `OFFICE_PERFORMANCE_REPEAT=1 --workers 1`。完整层默认逐场景一次，**不是取消三次性能验收**。
+- 必要覆盖只去重，不取消真实地图：首次 GPU 点击、详情占位／尺寸／重复选择、切换 West End 与关闭保留相机合到尺寸流程；真实 3D／比例尺／空间来源合到冷启动；窄屏全景／复位合到触屏布局；City 区内屋顶、范围外不误染、切走恢复、Canary Wharf 标签与 missing 合为一条真实地图选择流程。每条仍从新的真实页面／Python HTTP 开始。九导航板块改为打开工作区后直接切换，关／开、键盘和触屏仍有独立覆盖。像素判据与 crop 不变，PNG 用既有 Pillow 在应用 GPU 进程外解码。
+- 加入明确标注的临时 synthetic conflict：由 Python Market 在临时快照产生 null／conflict，通过 UI 验证不是 missing、API error 或零值；不装入正式数据、不替代正常融合。原历史 Agent replay、准确工具输入／输出、回答范围、独立 Agent 胶囊和无 Agent 错误仍保留；这些不是模型实测。
+
+| 最新命令／模式 | 命令 wall time | 结果 |
+|---|---:|---|
+| `npm run check:quick` | **1.21s** | 27 Python＋类型检查通过 |
+| SwiftShader，选区／真实屋顶／恢复／missing 聚焦，单 worker | **25.01s** | 1 项通过；含 build／服务器／浏览器 |
+| SwiftShader，九板块真实切换聚焦，单 worker | **13.65s** | 1 项通过；含 build／服务器／浏览器 |
+| `OFFICE_USER_RENDERER=1 npm run check:full`，2 worker／Metal | **53.66s** | 27 Python＋类型／build＋**33/33 E2E 通过**，无重试、无跳过、真实地图在此计时内 |
+| `npm run check:full`，2 worker／SwiftShader | **57.66s** | 全局 deadline，**16 pass、4 明确跳过用户性能专用项、13 未执行**；退出 1，不是整套 GREEN |
+
+最新完整 Metal 命令保留九导航、真实 Market HTTP、图表／来源、missing／synthetic conflict／Not connected、API error、正常／失败底图、WebGL 不可用、窄屏、真实 GPU 拾取与投影、颜色／恢复、原生拖拽／旋转／相机复位、历史 replay。命令内用户热态反馈上界最多 68ms、完整呈现最多 573.6ms；冷启动业务最多 428.3ms、可探索背景最多 4528.2ms；pending 故障在导航 **14981.9ms** 呈现明确降级，继续真实数据与 GPU 选择。故障注入的 10 秒背景失败不因降级变成正常通过。
+
+### 单 worker 的固定输入三次用户验收
+
+各命令仍包含 build／启动／证据；桌面／窄屏热态命令分别 **20.80／18.16s**，冷启动分别 **18.19／15.20s**。热态目标视图预热且样本的 vector requests 全为空；冷启动三次各用新 context、HTTP cache disabled，不宣称 OS／CDN／GPU 冷缓存。Metal renderer、DPR 1、正常动画不变。反馈用可信输入 timestamp／Chromium Event Timing；完成帧上界以实际 compositor 截图返回时间保守计量，真实屋顶像素／相机响应验证几何与呈现，不以 handler／ready flag／单次 rAF 代替。
+
+| 视窗／输入 | 反馈上界 ms（三次） | 完整呈现上界 ms（三次） |
+|---|---|---|
+| 1600×1000／导航 | 36, 36, 36 | 456.9, 162.1, 152.6 |
+| 1600×1000／列表 | 36, 44, 36 | 516.5, 523.6, 514.4 |
+| 1600×1000／GPU 地图 | 36, 36, 36 | 565.3, 569.8, 570.1 |
+| 390×844／触屏导航 | 60, 60, 36 | 152.8, 141, 73.4 |
+| 390×844／触屏列表 | 52, 44, 52 | 496.7, 490.8, 498.3 |
+| 390×844／GPU tap | 52, 52, 52 | 519.7, 513.8, 504.5 |
+
+| 视窗 | 业务呈现上界 ms（三次） | 首次背景呈现上界 ms（三次） | 可探索呈现上界 ms（三次） |
+|---|---|---|---|
+| 1600×1000 | 371.7, 400.1, 408.1 | 3785.2, 3794.1, 4088.7 | 4348.9, 4358.8, 4663.4 |
+| 390×844 | 360.3, 374.5, 381.5 | 2896.1, 2624.8, 2622.9 | 3398.8, 3120.6, 3123.2 |
+
+### 保留的失败与停止边界
+
+- 初始完整用户命令 **58.77s** 截止只完成 14/40；2 worker 仍只有 21/40。减少重复采样后 32/37；3 worker 完成覆盖但 pending 有实际超限：状态在 14801.7ms 写入，之后 107ms／440ms long tasks，不能把状态写入当提示帧。保留首失败 trace，不以重跑覆盖它；最终硬件维持 2 worker。
+- 定向 SwiftShader 九板块 profile `_resizeCanvas` self 累积 **9884.8ms**；这是连续开／关的采样，不是单次用户延迟。改为同一打开工作区内切换后，聚焦命令 **22.65→13.65s**。真实布局开／关覆盖仍由独立尺寸、键盘、触屏流程承担，没有关闭正常 3D、提高超时或提前降级。
+- 软件并发 4 的探针一度 29 项完成／1 未执行，后续也暴露同尺寸 25 秒超时；3 worker 仍截止且有未执行场景，不能挑最快一遍转绿。已撤回更高并发，最终默认仍为 2 worker。最新软件冷启动功能样本业务 668.1／604.6ms、可探索 9575.9／6782.5ms；更早 4 worker 的业务 9921.7ms／可探索 12491.8ms 失败全部保留，**不满足用户性能验收，也不以软件 GREEN 冒充硬件**。
+- 去重时新加入窄屏信息卡二次点击曾被卡片遮挡，原 trace 保留；关闭改用同一已聚焦按钮的真实 Enter，不用 force click 或生产状态 setter。窄屏信息卡遮住鼠标关闭入口记作 Low follow-up，未扩大为生产 UI 修复。
+- 只清理确认 cwd 为本仓库 frontend、PPID 1 的历史 orphan Playwright worker 57304 及其专用浏览器 57305；不操作其他项目进程／浏览器。没有新依赖、业务 Interface、数据源、持久化、发布权限或模型调用。
+
+本轮已到单上下文停止边界，提交的是硬件三层反馈与保留全部覆盖的完整绿色增量，**#5 不关闭，转回 `needs-triage`**。剩余建议：以这里的真实软件 2 worker 输入和最小 profile 为起点，重新确定软件渲染闭环可达路径；若需要改变生产渲染生命周期，则重新确认局部 Gate／范围，不继续在本票堆并发、harness 或放宽预算。本轮不新建 Ticket、不自动扩建 backlog。
+
+原件：`artifacts/ticket-5/` 保存每条命令 log、原始 baseline／profile／探针和 `summary.json`；唯一 `artifacts/checks/20261010T204318-73958/` 是最后 Metal 完整报告，`20261010T204422-74316/` 是最后软件截止报告，三次样本报告见四条 `final-hot-user-*`／`final-cold-user-*` 日志中打印的目录。JSON 保留每次输入、环境、resource／navigation timing、真实网络 URL／缓存标志、全部样本、错误和 trace；源文件 SHA256 在本地 summary 绑定，不包含凭据。旧原件不被新报告覆盖。
+
+**分别报告**：离线业务与类型通过；真实地图融合／E2E 的 Metal 完整层通过，SwiftShader 完整层仍 RED；实时模型 **未执行**。用户视觉／业务验收、Issue #1 原独立 Closure 仍未完成，本票双轴 review 也不能冒充它。
+
 ## Ticket #4 冷启动／降级（用户 GPU 场景通过，整套仍未验收）
 
 固定点 `589d7cf`，生产 bundle `index-BPGZ-NYB.js`；环境为 Mac17,9 / Apple M5 Pro / 64GiB / 18 logical CPUs、Node 26.4、Python 3.12.13、项目 Chromium 156.0.8078.4 / Playwright 1.64、DPR 1、正常动画。使用本项目独立服务器 `--no-agent` 和专用浏览器；数据是 Savills 两期真实历史快照，背景是 OpenFreeMap / OpenMapTiles。没有新依赖、数据、HTTP／工具／认证合同或模型请求。

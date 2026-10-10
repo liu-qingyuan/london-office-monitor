@@ -9,27 +9,8 @@ const roundedPose = (s: Awaited<ReturnType<typeof state>>) => ({
   center:s.center.map(n=>Number(n.toFixed(5)))
 });
 
-test('London scene renders actual map-provided 3D building volumes, not a screenshot background', async ({page}) => {
-  test.setTimeout(45000);
-  const errors: string[] = [];
-  page.on('pageerror',error=>errors.push(error.message));
-  await page.setViewportSize({width:1600,height:1000});
-  await page.goto('/');
-  await expect(page.locator('.maplibregl-canvas')).toBeVisible();
-  await expect.poll(()=>state(page),{timeout:30000}).toMatchObject({webgl2:true,buildings3d:true});
-  await expect.poll(async()=>(await state(page)).pitch).toBeCloseTo(55,1);
-  await expect.poll(async()=>(await state(page)).renderedBuildingCount,{timeout:30000}).toBeGreaterThan(20);
-  await expect(page.locator('.maplibregl-ctrl-scale')).toBeVisible();
-  await expect(page.locator('#coverage-summary')).toContainText('2 of 4');
-  await openSection(page);
-  await expect(page.locator('.snapshot-chart .chart-bar')).toHaveCount(2);
-  await mkdir('../artifacts/left-detail',{recursive:true});
-  await page.screenshot({path:'../artifacts/left-detail/london-overview-e2e.png'});
-  await page.getByRole('button',{name:'Map information',exact:true}).click();
-  await expect(page.locator('#map-info')).toContainText('not verified height surveys');
-  expect(errors).toEqual([]);
-});
-
+// Scene/scale/information checks live in the isolated cold-start samples;
+// narrow overview checks live in the integrated touch-layout flow.
 test('camera controls change real WebGL pose, support native drag, and reset the city overview', async ({page}) => {
   test.setTimeout(45000);
   await page.goto('/');
@@ -95,19 +76,4 @@ test('selecting all four submarkets focuses the real camera and filters keep its
   await expect.poll(async()=>roundedPose(await state(page))).toEqual(roundedPose(focus));
   await mkdir('../artifacts/left-detail',{recursive:true});
   await page.screenshot({path:'../artifacts/left-detail/canary-wharf-gap-e2e.png'});
-});
-
-test('narrow screens retain usable map controls, readable data, and no horizontal overflow', async ({page}) => {
-  test.setTimeout(45000);
-  await page.setViewportSize({width:390,height:844});
-  await page.goto('/');
-  await expect.poll(()=>state(page)).toMatchObject({webgl2:true,buildings3d:true});
-  await expect.poll(async()=>(await state(page)).renderedBuildingCount,{timeout:30000}).toBeGreaterThan(20);
-  await expect(page.getByRole('button',{name:'Reset map',exact:true})).toBeVisible();
-  await expect(page.locator('.area-row')).toHaveCount(4);
-  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
-  await page.getByRole('button',{name:'Reset map',exact:true}).click();
-  await expect.poll(async()=>(await state(page)).renderedBuildingCount,{timeout:30000}).toBeGreaterThan(20);
-  await mkdir('../artifacts/left-detail',{recursive:true});
-  await page.screenshot({path:'../artifacts/left-detail/mobile-overview-e2e.png',fullPage:true});
 });

@@ -13,7 +13,7 @@
 
 ## 实施入口与当前状态
 
-**整体性能与用户产品验收仍未完成。** #3 热态路径在生产构建、专用 Chromium／Apple M5 Pro Metal、正常动画下，两种视窗各三次反馈上界最多 **60ms**、完整呈现上界最多 **575.5ms**。#4 真实冷启动采用新 context、禁用 HTTP cache：桌面／窄屏各三次，业务呈现最多 **409.6ms**、真实 3D 呈现并响应相机输入最多 **4751.7ms**；pending 底图从首次导航起 **15 秒内**明确降级，保留真实数据及 GPU 选择。正常／慢／失败聚焦命令 **29.75 秒**，SwiftShader 功能聚焦 **15.83 秒**；27 项离线测试及 build **1.44 秒**。软件渲染冷启动曾超过用户时延，不能替代硬件验收；相关软件套件 **32.27 秒通过**，硬件合并相关套件在 **60 秒**截止仅完成 5 项。#5 完整无模型 **60 秒**闭环仍待交付；不能称最新整套 GREEN。无新模型调用，历史 SDK／重放不代替用户产品验收或 Issue #1 原独立 Closure。逐次数据、失败与限制见 [`docs/verification.md`](docs/verification.md)。
+**#5 仅交付绿色增量，整体性能与用户产品验收仍未完成。** 最新快速检查（27 Python＋类型）**1.21 秒**，SwiftShader 真实着色聚焦 **25.01 秒**；生产、专用 Chromium／Apple M5 Pro Metal 的完整无模型命令（含业务、build、服务器／浏览器、33 项 E2E 和证据）**53.66 秒全部通过**。两视窗独立三次用户样本反馈最多 **60ms**、热态完整呈现最多 **570.1ms**，冷启动业务最多 **408.1ms**、可探索背景最多 **4663.4ms**；完整命令中的 pending 降级呈现 **14981.9ms**。但默认 SwiftShader 完整命令 **57.66 秒截止：16 pass、4 明确跳过用户性能专用项、13 未执行**，仍为 RED；硬件结果不能替它转绿。#5 保持打开待重新 triage；不新增模型调用，replay 不替代实时模型、用户产品验收或 Issue #1 原独立 Closure。全部样本、首失败、去重覆盖与限制见 [`docs/verification.md`](docs/verification.md)。
 
 相关实现／测试已保存为 main 代码基线 `52d205ad700a6940dfee015a21c2795a27d8d29c`，已知失败不因此变绿。当前使用 main，不新建分支或 worktree；代码提交不自动启动 Ralph。当前工作是先恢复既有地图性能，不扩展地区检索、研究或发布。权威要求见 [Spec #2](https://github.com/liu-qingyuan/london-office-monitor/issues/2)，正文镜像为 [`docs/specs/map-performance.md`](docs/specs/map-performance.md)：完整无模型回归上限已收紧为 **60 秒**，不是固定等待时间或已通过声明。保留 [#3 热态交互](https://github.com/liu-qingyuan/london-office-monitor/issues/3)、[#4 冷启动／降级](https://github.com/liu-qingyuan/london-office-monitor/issues/4)、[#5 验证反馈](https://github.com/liu-qingyuan/london-office-monitor/issues/5) 三票；#5 依赖 #3、#4。用户已批准原地转为 Ralph-ready，父子票共享 `main`／`origin/main` 的完整 Git 基线（父 spec 最终 `## Git`）；实际领取仍需通过只读 eligibility gate，启动循环须另行明确请求。
 
@@ -104,19 +104,18 @@ uv run london-office inspect your-own-market-report.pdf  # 仅提取，不自动
 uv run python -m unittest discover -s tests -v
 cd frontend
 PLAYWRIGHT_BROWSERS_PATH=./.pw-browsers npx playwright install chromium
-npm run test:e2e                     # 独立服务器与 SwiftShader；真实 Python API，禁用模型
-# 生产热态验收：已有 build，专用 headed Chromium 的实际 renderer；两种视窗分别计时
-OFFICE_PRODUCTION=1 OFFICE_USER_RENDERER=1 npm run test:e2e -- tests/left-detail.spec.ts -g 'hot user-renderer selection 1600' --headed --global-timeout 25000
-OFFICE_PRODUCTION=1 OFFICE_USER_RENDERER=1 npm run test:e2e -- tests/left-detail.spec.ts -g 'hot user-renderer selection 390' --headed --global-timeout 25000
-# 同尺寸、实际详情开关与 GPU 拾取的最短软件渲染回归
-OFFICE_PRODUCTION=1 npm run test:e2e -- tests/left-detail.spec.ts -g 'same-size selections'
-# 冷启动：每种视窗三个新 context，真实背景／相机／实际业务帧；无自动重试
-OFFICE_PRODUCTION=1 OFFICE_USER_RENDERER=1 npm run test:e2e -- tests/cold-start.spec.ts -g 'cold startup 1600' --headed --global-timeout 30000 --retries 0
-OFFICE_PRODUCTION=1 OFFICE_USER_RENDERER=1 npm run test:e2e -- tests/cold-start.spec.ts -g 'cold startup 390' --headed --global-timeout 30000 --retries 0
-# 最短正常／pending／vector 错误回归；故障注入不代替上述正常底图验收
-OFFICE_PRODUCTION=1 OFFICE_USER_RENDERER=1 npm run test:e2e -- tests/cold-start.spec.ts -g 'pending background|explicit vector|from first navigation 1' --headed --global-timeout 30000 --retries 0
-# 软件仅作独立功能反馈，不声称满足用户 2／10 秒预算
-OFFICE_PRODUCTION=1 npm run test:e2e -- tests/cold-start.spec.ts tests/market.spec.ts -g 'cold startup 390|unavailable external background' --global-timeout 30000 --retries 0
+npm run test:e2e                     # 原入口：独立服务器／SwiftShader，真实 Python API，无模型
+npm run check:quick                  # ≤10 秒：27 项 Python＋类型；普通业务编辑用这一层
+# ≤30 秒：按改动传入原测试文件／-g；包含 production build、服务器、浏览器与证据
+OFFICE_USER_RENDERER=1 npm run check:focused -- tests/left-detail.spec.ts -g 'same-size selections|buildings and labels'
+npm run check:focused -- tests/left-detail.spec.ts -g 'buildings and labels' --workers 1
+# ≤60 秒阶段收尾：完整真实业务与地图，不另跑未计时的地图命令
+OFFICE_USER_RENDERER=1 npm run check:full  # 当前固定机器 GPU 33 项完整 GREEN，53.66 秒
+npm run check:full                       # SwiftShader 对照，当前截止仍 RED；不冒充完整通过
+# 固定输入三次独立用户采样；分别把 1600 替换成 390 再执行，两种视窗各一条命令
+# --workers=1 隔离性能采样；正常动画、生产构建，不能用软件 renderer 替代
+OFFICE_USER_RENDERER=1 OFFICE_PERFORMANCE_REPEAT=1 npm run check:focused -- tests/left-detail.spec.ts -g 'hot user-renderer selection 1600' --workers 1
+OFFICE_USER_RENDERER=1 OFFICE_PERFORMANCE_REPEAT=1 npm run check:focused -- tests/cold-start.spec.ts -g 'cold startup 1600' --workers 1
 cd ..
 uv run python scripts/live_smoke.py  # 登录后真正执行 3 轮模型，实际工具与逐项检查
 # 另一终端已启动 Agent-enabled serve 后，可选地真正调用 2 轮模型：

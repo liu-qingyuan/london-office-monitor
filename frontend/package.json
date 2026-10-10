@@ -7,7 +7,10 @@
     "dev": "vite --host 127.0.0.1 --port 5178 --strictPort",
     "typecheck": "tsc --noEmit",
     "build": "npm run typecheck && vite build",
-    "test:e2e": "PLAYWRIGHT_BROWSERS_PATH=./.pw-browsers playwright test"
+    "test:e2e": "PLAYWRIGHT_BROWSERS_PATH=./.pw-browsers playwright test",
+    "check:quick": "bash -c 'SECONDS=0; (cd .. && .venv/bin/python -m unittest discover -s tests -v) && npm run typecheck; result=$?; echo \"quick wall: ${SECONDS}s (budget 10s; 1s exit margin)\"; (( SECONDS < 9 )) || exit 1; exit \"$result\"'",
+    "check:focused": "bash -c 'SECONDS=0; (( $# > 0 )) || { echo \"Pass a test file and optional -g filter\" >&2; exit 2; }; export OFFICE_PRODUCTION=1 OFFICE_EVIDENCE_DIR=../artifacts/checks/$(date -u +%Y%m%dT%H%M%S)-$$; echo \"Evidence: $OFFICE_EVIDENCE_DIR\"; npm run build && (( SECONDS < 28 )) && PLAYWRIGHT_BROWSERS_PATH=./.pw-browsers playwright test --global-timeout $(( (28-SECONDS)*1000 )) \"$@\"; result=$?; echo \"focused wall: ${SECONDS}s (budget 30s; 1s exit margin)\"; (( SECONDS < 29 )) || exit 1; exit \"$result\"' --",
+    "check:full": "bash -c 'SECONDS=0; export OFFICE_PRODUCTION=1 OFFICE_EVIDENCE_DIR=../artifacts/checks/$(date -u +%Y%m%dT%H%M%S)-$$; echo \"Evidence: $OFFICE_EVIDENCE_DIR\"; (cd .. && .venv/bin/python -m unittest discover -s tests -v) && npm run build && (( SECONDS < 58 )) && PLAYWRIGHT_BROWSERS_PATH=./.pw-browsers playwright test --global-timeout $(( (58-SECONDS)*1000 )); result=$?; echo \"full wall: ${SECONDS}s (budget 60s; 1s exit margin)\"; (( SECONDS < 59 )) || exit 1; exit \"$result\"'"
   },
   "dependencies": {
     "@deck.gl/core": "9.4.0",

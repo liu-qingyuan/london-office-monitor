@@ -54,18 +54,17 @@ test('topic selection reuses real observations and report kinds without inventin
   await expect(page.locator('.area-panel')).toBeHidden();
   await expect(page.locator('.detail-panel')).toBeHidden();
   await expect(page.locator('.workspace-nav-item[aria-pressed="true"]')).toHaveCount(1);
-  await page.getByRole('button',{name:'Close workspace',exact:true}).click();
+  // Switch actual sections in the open workspace. Repeated close/reopen
+  // allocations are covered by the isolated resize/keyboard/touch flows.
   await openSection(page,'Rents');
   await expect(page.locator('#panel-title')).toHaveText('Rents');
   await expect(page.locator('#detail-content .snapshot-chart')).toContainText('£105.26');
   await expect(page.getByRole('button',{name:'Overall vacancy rate',exact:true})).toBeHidden();
-  await page.getByRole('button',{name:'Close workspace',exact:true}).click();
   await openSection(page,'Vacancy & availability');
   await expect(page.locator('#detail-content .snapshot-chart')).toContainText('7%');
   await expect(page.locator('#detail-content .snapshot-chart')).toContainText('Unit: %');
   await expect(page.locator('#section-content')).toContainText('Availability ratio');
   await expect(page.locator('#section-content')).toContainText('Not connected');
-  await page.getByRole('button',{name:'Close workspace',exact:true}).click();
   for (const [label,kind] of [['Leasing activity','report_leasing_event'],['Supply pipeline','report_supply_context'],['Demand drivers','report_demand_driver'],['News & events',null]] as const) {
     await openSection(page,label);
     const expected=source.notes.filter(n=>kind===null||n.kind===kind);
@@ -74,8 +73,9 @@ test('topic selection reuses real observations and report kinds without inventin
     await expect(page.locator('#section-content')).toContainText('Historical report context');
     await expect(page.locator('#section-content')).toContainText('not an individual-submarket series or live news');
     await expect(page.locator('#section-content .event-card a').first()).toHaveAttribute('href',/^https:\/\/www\.savills\.co\.uk\//);
-    await page.getByRole('button',{name:'Close workspace',exact:true}).click();
   }
+  await page.getByRole('button',{name:'Close workspace',exact:true}).click();
+  await expect(page.locator('.inspector')).toBeHidden();
 });
 
 test('keyboard focus reveals labels and Escape returns to the icon column without immediately reopening',async({page})=>{

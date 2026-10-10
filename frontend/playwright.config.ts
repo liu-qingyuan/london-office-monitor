@@ -3,24 +3,30 @@ import {defineConfig, devices} from '@playwright/test';
 // Test only this project's dedicated servers and Playwright-managed Chromium.
 // A port collision fails instead of attaching to somebody else's process.
 const production = process.env.OFFICE_PRODUCTION === '1';
+const userRenderer = process.env.OFFICE_USER_RENDERER === '1';
+const evidenceDir = process.env.OFFICE_EVIDENCE_DIR ?? '../artifacts/playwright-results';
 export default defineConfig({
   testDir: './tests',
-  fullyParallel: false,
-  workers: 1,
+  fullyParallel: true,
+  // Two independent contexts overlap startup without sharing UI state.
+  // Higher concurrency polluted presentation budgets and did not close the
+  // software-renderer deadline. Use --workers=1 for isolated acceptance.
+  workers: 2,
   forbidOnly: true,
-  retries: process.env.CI ? 2 : 0,
+  retries: 0,
   reporter: [
     ['list'],
-    ['json', {outputFile: '../artifacts/playwright-results/results.json'}],
-    ['html', {outputFolder: '../artifacts/playwright-results/report', open: 'never'}]
+    ['json', {outputFile: `${evidenceDir}/results.json`}],
+    ['html', {outputFolder: `${evidenceDir}/report`, open: 'never'}]
   ],
-  outputDir: '../artifacts/playwright-results/test-results',
+  outputDir: `${evidenceDir}/test-results`,
   use: {
     ...devices['Desktop Chrome'],
     baseURL: production ? 'http://127.0.0.1:8018' : 'http://127.0.0.1:5178',
+    headless: !userRenderer,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
-    launchOptions: {args: process.env.OFFICE_USER_RENDERER === '1' ? ['--enable-webgl'] : ['--enable-webgl', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader']}
+    launchOptions: {args: userRenderer ? ['--enable-webgl'] : ['--enable-webgl', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader']}
   },
   webServer: [
     {command: 'cd .. && .venv/bin/python -m london_office serve --port 8018 --no-agent', url: 'http://127.0.0.1:8018/api/catalog', reuseExistingServer: false, timeout: 30000},

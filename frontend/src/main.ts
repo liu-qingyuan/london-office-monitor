@@ -128,7 +128,8 @@ let suppressNavigationFocus = false;
 let touchNavigationPreview = false;
 let sessionId: string | undefined;
 const marketCache = new globalThis.Map<string, Market>();
-const map = new MarketMap($('#map'), area => selectArea(area), (area, x, y) => hover(area, x, y), status => { $('#map-state').textContent = status; }, state => renderCameraState(state));
+let cameraState: CameraState | undefined;
+const map = new MarketMap($('#map'), area => selectArea(area), (area, x, y) => hover(area, x, y), status => { $('#map-state').textContent = status; renderCameraState(); }, state => renderCameraState(state));
 window.__officeMapDebug = {state: () => map.debug(), project: point => map.project(point)};
 
 function renderFilters(): void {
@@ -414,11 +415,13 @@ function setAgentExpanded(expanded: boolean): void {
   $('#open-agent').title = expanded ? 'Close research assistant' : 'Open research assistant';
   if (!expanded && $('.agent-shell').contains(document.activeElement)) $('#open-agent').focus();
 }
-function renderCameraState(state: CameraState = map.debug()): void {
+function renderCameraState(state: CameraState | undefined = cameraState): void {
+  if (!state) return;
+  cameraState = state;
   $('#camera-caption').textContent = `${state.pitch < 1 ? 'TOP-DOWN' : '3D CITY'} · ${state.pitch.toFixed(0)}° · Z ${state.zoom.toFixed(1)}`;
   $('#compass-arrow').style.transform = `rotate(${-state.bearing}deg)`;
   const layerStatus = document.querySelector('#layer-background-status');
-  if (layerStatus) layerStatus.textContent = `Background: ${map.debug().baseMapStatus} · source-provided geometry, not height surveys`;
+  if (layerStatus) layerStatus.textContent = `${$('#map-state').textContent} · source-provided geometry, not height surveys`;
   const target = $('#map-directions');
   if (!catalog) return;
   const width = $('#map').clientWidth, height = $('#map').clientHeight;
@@ -511,8 +514,8 @@ $('.agent-shell').addEventListener('keydown',event=>{ if (event.key === 'Escape'
 $('#zoom-in').addEventListener('click',()=>map.zoomBy(1));
 $('#zoom-out').addEventListener('click',()=>map.zoomBy(-1));
 $('#rotate-view').addEventListener('click',()=>map.rotateBy(45));
-$('#north-view').addEventListener('click',()=>map.rotateBy(-map.debug().bearing));
-$('#tilt-view').addEventListener('click',()=>map.setPitch(map.debug().pitch > 60 ? 40 : 70));
+$('#north-view').addEventListener('click',()=>map.rotateBy(-(cameraState?.bearing ?? 0)));
+$('#tilt-view').addEventListener('click',()=>map.setPitch((cameraState?.pitch ?? 55) > 60 ? 40 : 70));
 $('#top-view').addEventListener('click',()=>map.setPitch(0));
 $('#reset-map').addEventListener('click',()=>{ map.reset(); $('#map-tooltip').hidden=true; });
 $('#dismiss-instructions').addEventListener('click',()=>{ $('#map-instructions').hidden=true; });

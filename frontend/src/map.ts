@@ -55,8 +55,12 @@ export class MarketMap {
   private vectorError = false;
   private buildingSelectionSignature = '';
   private selectedBuildings: GeoJSON.Feature<GeoJSON.Polygon>[] = [];
+  private partIds = new globalThis.Map<string,number>();
+  private buildingColors = new globalThis.Map<number,boolean>();
+  private nextPartId = 0;
   private buildingsDirty = true;
-  private buildingSelectionArea: AreaId | null = null;
+  private viewport = {width:0,height:0,pixelRatio:0};
+  private focusFrame: number | null = null;
 
   constructor(
     private readonly container: HTMLElement,
@@ -78,12 +82,19 @@ export class MarketMap {
       this.map = new Map({
         container: this.container, style: remoteStyle, ...overview,
         minZoom: 11, maxZoom: 18, maxPitch: 75,
-        dragRotate: true, pitchWithRotate: true,
-        canvasContextAttributes: {antialias: true}, attributionControl: false
+        // The default narrow-view cache evicts the warmed City tiles while
+        // comparing nearby areas/layouts. Retain them with a finite native cap.
+        maxTileCacheZoomLevels: 8, maxTileCacheSize: 128,
+        dragRotate: true, pitchWithRotate: true, trackResize: false,
+        // MSAA makes even buffer uploads wait on the software renderer's large
+        // multisampled frame. Keep real 3D; deck's selector edges stay antialiased.
+        canvasContextAttributes: {antialias: false}, attributionControl: false
       });
-      // Opening the integrated detail region changes the canvas container, not
-      // the window. Keep the real map viewport and projection in sync with it.
-      new ResizeObserver(() => { this.map?.resize(); this.onCamera?.(this.camera()); }).observe(this.container);
+      this.viewport = {width:this.container.clientWidth,height:this.container.clientHeight,pixelRatio:window.devicePixelRatio};
+      // One owner for actual layout/DPR changes. Focus also uses this same guard
+      // before starting an animation, rather than racing a delayed second resize.
+      new ResizeObserver(() => { this.syncSize(); this.onCamera?.(this.camera()); }).observe(this.container);
+      window.addEventListener('resize',()=>this.syncSize());
       this.map.addControl(new ScaleControl({maxWidth:90,unit:'metric'}),'bottom-left');
       this.map.addControl(new AttributionControl({compact:true}),'bottom-right');
       this.map.on('error', event => {
@@ -123,9 +134,18 @@ export class MarketMap {
       // its click coordinates instead of racing two canvas gesture recognizers.
       this.map.on('click', event => {
         if (!this.overlay || !this.geometry) return;
-        const hit = this.overlay.pickObject({x:event.point.x,y:event.point.y,radius:2,layerIds:['illustrative-area-selectors']});
-        const feature = hit?.object as AreaFeature | undefined;
-        if (feature) this.onSelect(feature.properties.area_id);
+        this.onStatus('Selecting the clicked submarket…');
+        // Allow the acknowledgement to be presented before a synchronous GPU
+        // readback. Picking still uses the real shared canvas, never a CPU proxy.
+        requestAnimationFrame(()=>requestAnimationFrame(()=>{
+          // Resize/camera work may have run since the input. Keep the clicked
+          // world position, then pick it in the current real GPU viewport.
+          const point = this.map?.project(event.lngLat);
+          const hit = point && this.overlay?.pickObject({x:point.x,y:point.y,radius:2,layerIds:['illustrative-area-selectors']});
+          const feature = hit?.object as AreaFeature | undefined;
+          if (feature) this.onSelect(feature.properties.area_id);
+          this.onStatus(this.basemapStatus === 'available' ? 'City background ready · OpenFreeMap' : this.basemapStatus === 'unavailable' ? 'Background service unavailable · selection geometry remains available' : 'Loading OpenFreeMap background · illustrative selectors');
+        }));
       });
       this.map.on('move', () => this.onCamera?.(this.camera()));
       this.map.on('moveend', () => { this.buildingsDirty = true; this.onHover(null,0,0); this.draw(); });
@@ -133,6 +153,7 @@ export class MarketMap {
         if (this.basemapStatus === 'loading') this.basemapFailed();
       }, 18000);
       this.onStatus('Loading OpenFreeMap background · illustrative selectors');
+      this.onCamera?.(this.camera());
     } catch {
       this.onStatus('Map rendering unavailable · market data remains accessible in the list.');
     }
@@ -173,7 +194,7 @@ export class MarketMap {
       id: buildingLayer, type: 'fill-extrusion', source: buildingSource, minzoom: 14,
       filter: ['all', ['has', 'render_height'], ['!=', ['get', 'hide_3d'], true]],
       paint: {
-        'fill-extrusion-color': ['case',['boolean',['get','current_selection'],false],'#e6ab43','#456d7a'],
+        'fill-extrusion-color': ['case',['boolean',['feature-state','current_selection'],false],'#e6ab43','#456d7a'],
         'fill-extrusion-height': ['get', 'render_height'],
         'fill-extrusion-base': ['coalesce', ['get', 'render_min_height'], 0],
         'fill-extrusion-opacity': 1,
@@ -199,19 +220,20 @@ export class MarketMap {
     if (geometry) this.geometry = geometry;
     this.market = market;
     this.areas = areas;
+    const changed = this.selected !== selected;
     this.selected = selected;
+    // A fixed feature-state expression avoids MapLibre's data-driven paint
+    // relayout. Real geometry updates belong to the source/idle lifecycle only.
+    if (changed) this.colorBuildings();
     // Filter/period updates repaint selectors only; the user's camera is untouched.
-    this.updateSelectedBuildings();
     this.draw();
   }
 
   private updateSelectedBuildings(): boolean {
-    const selector = this.geometry?.features.find(f => f.properties.area_id === this.selected);
+    const geometry = this.geometry;
     const source = this.map?.getSource<GeoJSONSource>(buildingSource);
-    if (!this.map || !source || !selector || !this.map.getSource('openmaptiles')) return false;
-    if (!this.buildingsDirty && this.buildingSelectionArea === this.selected) return false;
+    if (!this.map || !source || !geometry || !this.map.getSource('openmaptiles') || !this.buildingsDirty) return false;
     this.buildingsDirty = false;
-    this.buildingSelectionArea = this.selected;
     if (this.map.getZoom() < 14) {
       const changed = this.selectedBuildings.length > 0;
       this.selectedBuildings = [];
@@ -219,7 +241,7 @@ export class MarketMap {
       if (changed) source.setData({type:'FeatureCollection',features:[]});
       return changed;
     }
-    const selectors = selector.geometry.type === 'Polygon' ? [selector.geometry.coordinates] : selector.geometry.coordinates;
+    const selectors = geometry.features.map(feature => ({id:feature.properties.area_id,polygons:feature.geometry.type === 'Polygon' ? [feature.geometry.coordinates] : feature.geometry.coordinates}));
     const parts = new globalThis.Map<string, GeoJSON.Feature<GeoJSON.Polygon>>();
     const bounds = this.map.getBounds();
     for (const feature of this.map.querySourceFeatures('openmaptiles',{sourceLayer:'building'})) {
@@ -232,18 +254,36 @@ export class MarketMap {
         const south=Math.min(...outer.map(point=>point[1]!)), north=Math.max(...outer.map(point=>point[1]!));
         if (east < bounds.getWest() || west > bounds.getEast() || north < bounds.getSouth() || south > bounds.getNorth()) continue;
         const key = JSON.stringify([feature.properties.render_height,feature.properties.render_min_height,coordinates]);
-        parts.set(key,{type:'Feature',properties:{...feature.properties,current_selection:selectors.some(area=>polygonsIntersect(coordinates,area))},geometry:{type:'Polygon',coordinates}});
+        // Stable identity of a source polygon part, not a property/building ID.
+        if (!parts.has(key)) parts.set(key,{type:'Feature',id:this.partIds.get(key) ?? this.nextPartId++,properties:{...feature.properties,selection_areas:selectors.filter(area=>area.polygons.some(polygon=>polygonsIntersect(coordinates,polygon))).map(area=>area.id)},geometry:{type:'Polygon',coordinates}});
       }
     }
     const keys = [...parts.keys()].sort();
-    const signature = `${this.selected}/${keys.join('|')}`;
+    const signature = keys.join('|');
     if (signature === this.buildingSelectionSignature) return false;
     this.buildingSelectionSignature = signature;
+    for (const [key,id] of this.partIds) if (!parts.has(key)) {
+      this.map.removeFeatureState({source:buildingSource,id});
+      this.buildingColors.delete(id);
+    }
+    this.partIds = new globalThis.Map(keys.map(key=>[key,parts.get(key)!.id as number]));
     // Reuse only real map footprints and their original height/base properties.
     // No estimated buildings, heights, market observations or persistent data.
     this.selectedBuildings = keys.map(key => parts.get(key)!);
     source.setData({type:'FeatureCollection',features:this.selectedBuildings});
+    this.colorBuildings();
     return true;
+  }
+
+  private colorBuildings(): void {
+    if (!this.map?.getSource(buildingSource)) return;
+    for (const part of this.selectedBuildings) {
+      const id = part.id as number;
+      const selected = part.properties?.selection_areas.includes(this.selected) ?? false;
+      if (selected === (this.buildingColors.get(id) ?? false)) continue;
+      this.buildingColors.set(id,selected);
+      this.map.setFeatureState({source:buildingSource,id},{current_selection:selected});
+    }
   }
 
   private draw(): void {
@@ -298,6 +338,13 @@ export class MarketMap {
     ]});
   }
 
+  private syncSize(): void {
+    const next = {width:this.container.clientWidth,height:this.container.clientHeight,pixelRatio:window.devicePixelRatio};
+    if (!this.map || next.width===this.viewport.width && next.height===this.viewport.height && next.pixelRatio===this.viewport.pixelRatio) return;
+    this.viewport = next;
+    this.map.resize();
+  }
+
   private prefersReducedMotion(): boolean {
     return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
   }
@@ -305,20 +352,35 @@ export class MarketMap {
   focus(area: AreaId): void {
     const center = this.areas.find(item => item.id === area)?.center;
     if (!center || !this.map) return;
-    this.map.resize();
-    const target = {center, zoom: 14.9, pitch: 60, bearing: this.map.getBearing()};
-    if (this.prefersReducedMotion()) this.map.jumpTo(target);
-    else this.map.easeTo({...target, duration: 850});
+    // Layout/feedback gets a presented frame before expensive size/GPU work.
+    if (this.focusFrame !== null) cancelAnimationFrame(this.focusFrame);
+    this.focusFrame = requestAnimationFrame(()=>{
+      this.focusFrame = requestAnimationFrame(()=>{
+        this.focusFrame = null;
+        if (!this.map) return;
+        this.syncSize();
+        const target = {center, zoom: 14.9, pitch: 60, bearing: this.map.getBearing()};
+        if (this.prefersReducedMotion()) this.map.jumpTo(target);
+        else this.map.easeTo({...target, duration: 350});
+      });
+    });
+  }
+
+  private cancelPendingFocus(): void {
+    if (this.focusFrame !== null) cancelAnimationFrame(this.focusFrame);
+    this.focusFrame = null;
   }
 
   reset(): void {
     if (!this.map) return;
+    this.cancelPendingFocus();
     if (this.prefersReducedMotion()) this.map.jumpTo(overview);
-    else this.map.easeTo({...overview, duration: 850});
+    else this.map.easeTo({...overview, duration: 350});
   }
 
   zoomBy(delta: number): void {
     if (!this.map || !Number.isFinite(delta)) return;
+    this.cancelPendingFocus();
     const zoom = Math.max(this.map.getMinZoom(), Math.min(this.map.getMaxZoom(), this.map.getZoom() + delta));
     if (this.prefersReducedMotion()) this.map.jumpTo({zoom});
     else this.map.easeTo({zoom, duration: 350});
@@ -326,6 +388,7 @@ export class MarketMap {
 
   rotateBy(delta: number): void {
     if (!this.map || !Number.isFinite(delta)) return;
+    this.cancelPendingFocus();
     const bearing = this.map.getBearing() + delta;
     if (this.prefersReducedMotion()) this.map.jumpTo({bearing});
     else this.map.easeTo({bearing, duration: 350});
@@ -333,6 +396,7 @@ export class MarketMap {
 
   setPitch(value: number): void {
     if (!this.map || !Number.isFinite(value)) return;
+    this.cancelPendingFocus();
     const pitch = Math.max(this.map.getMinPitch(), Math.min(this.map.getMaxPitch(), value));
     if (this.prefersReducedMotion()) this.map.jumpTo({pitch});
     else this.map.easeTo({pitch, duration: 350});
@@ -362,7 +426,7 @@ export class MarketMap {
       geometryCount: this.geometry?.features.length ?? 0,
       buildings3d: Boolean(this.map?.getLayer(buildingLayer)),
       renderedBuildingCount: this.renderedBuildingCount(),
-      moving: this.map?.isMoving() ?? false,
+      moving: this.focusFrame !== null || (this.map?.isMoving() ?? false),
       ...this.camera()
     };
   }

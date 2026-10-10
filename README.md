@@ -13,7 +13,7 @@
 
 ## 实施入口与当前状态
 
-**当前是未验收的性能基线，不是全部回归通过的版本。** 最新完整浏览器记录为 26 项、24 通过和 2 超时（约 5.9 分钟），发生在最新原生建筑渲染替换前；最新两项相机／导航聚焦回归仍失败，尚无最新全量或性能通过证明。此前 21 项浏览器 GREEN 只属于历史版本；本次准备 main 基线提交重跑的 27 项离线 Python 测试和类型检查通过，不证明端到端或性能达标。实时 SDK 历史记录不证明当前界面已实测，独立 review Closure 和用户产品验收仍未完成。具体已知失败、版本限制和原始证据以 [`docs/verification.md`](docs/verification.md) 为准。
+**整体性能与用户产品验收仍未完成。** #3 热态路径已用生产构建、专用 Chromium／Apple M5 Pro Metal 及正常动画验证：1600×1000 与 390×844 的导航／列表／真实 GPU 地图输入各三次，反馈上界最多 **60ms**、完整呈现上界最多 **575.5ms**，全部无新目标瓦片请求；两个专用命令分别 **18.86／17.95 秒**。SwiftShader 同尺寸／开关详情／拾取回归连同构建和 profile 为 **22.31 秒**；离线 27 项及类型检查通过。完整浏览器运行仍超预算：软件整套在 150 秒截止时完成 22 项，另次补跑剩余 5 项通过；硬件整套曾挂起，不能称最新一次完整 GREEN。#4 冷启动／降级、#5 完整 **60 秒**闭环尚待交付。没有新模型调用；历史 SDK、重放和工程测试不代替用户产品验收或 Issue #1 原独立 Closure。逐次数据、失败与限制见 [`docs/verification.md`](docs/verification.md)。
 
 相关实现／测试已保存为 main 代码基线 `52d205ad700a6940dfee015a21c2795a27d8d29c`，已知失败不因此变绿。当前使用 main，不新建分支或 worktree；代码提交不自动启动 Ralph。当前工作是先恢复既有地图性能，不扩展地区检索、研究或发布。权威要求见 [Spec #2](https://github.com/liu-qingyuan/london-office-monitor/issues/2)，正文镜像为 [`docs/specs/map-performance.md`](docs/specs/map-performance.md)：完整无模型回归上限已收紧为 **60 秒**，不是固定等待时间或已通过声明。保留 [#3 热态交互](https://github.com/liu-qingyuan/london-office-monitor/issues/3)、[#4 冷启动／降级](https://github.com/liu-qingyuan/london-office-monitor/issues/4)、[#5 验证反馈](https://github.com/liu-qingyuan/london-office-monitor/issues/5) 三票；#5 依赖 #3、#4。用户已批准原地转为 Ralph-ready，父子票共享 `main`／`origin/main` 的完整 Git 基线（父 spec 最终 `## Git`）；实际领取仍需通过只读 eligibility gate，启动循环须另行明确请求。
 
@@ -104,7 +104,12 @@ uv run london-office inspect your-own-market-report.pdf  # 仅提取，不自动
 uv run python -m unittest discover -s tests -v
 cd frontend
 PLAYWRIGHT_BROWSERS_PATH=./.pw-browsers npx playwright install chromium
-npm run test:e2e                     # 独立服务器与 Chromium；真实 Python API，禁用模型
+npm run test:e2e                     # 独立服务器与 SwiftShader；真实 Python API，禁用模型
+# 生产热态验收：已有 build，专用 headed Chromium 的实际 renderer；两种视窗分别计时
+OFFICE_PRODUCTION=1 OFFICE_USER_RENDERER=1 npm run test:e2e -- tests/left-detail.spec.ts -g 'hot user-renderer selection 1600' --headed --global-timeout 25000
+OFFICE_PRODUCTION=1 OFFICE_USER_RENDERER=1 npm run test:e2e -- tests/left-detail.spec.ts -g 'hot user-renderer selection 390' --headed --global-timeout 25000
+# 同尺寸、实际详情开关与 GPU 拾取的最短软件渲染回归
+OFFICE_PRODUCTION=1 npm run test:e2e -- tests/left-detail.spec.ts -g 'same-size selections'
 cd ..
 uv run python scripts/live_smoke.py  # 登录后真正执行 3 轮模型，实际工具与逐项检查
 # 另一终端已启动 Agent-enabled serve 后，可选地真正调用 2 轮模型：

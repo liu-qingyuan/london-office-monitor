@@ -4,13 +4,38 @@
 
 来源：[Issue #1](https://github.com/liu-qingyuan/london-office-monitor/issues/1)、[性能 Spec #2](https://github.com/liu-qingyuan/london-office-monitor/issues/2)、`docs/spec.md`、`docs/contracts.md`。历史首版审查 fixed point 为 `d1cf15b`，不是当前 WIP 的固定基线；记录日期 2026-10-10 Asia/Shanghai，执行文件使用 UTC。
 
-## 集成详情与地图性能（当前：未验收）
+## Ticket #3 热态修复（逐场景通过，整体仍未验收）
+
+验证基于 `7a3729b` 之后的本票改动，记录目录 `artifacts/ticket-3/`；不把下方历史基线当作本次结果。环境：Darwin arm64 / Mac17,9、Apple M5 Pro、64GiB、18 logical CPUs；项目 Playwright 1.64 / Chromium 156.0.8078.4、DPR 1、真实 OpenFreeMap、Savills 两期历史快照、正常动画。Desktop Chrome 的 UA 是测试设备预设，不代表主机是 Windows。生产 bundle `index-CRpY5R40.js`，无新依赖／数据／HTTP／工具／认证／模型调用。
+
+- 先捕获原相机场景 **48.92 秒**及同尺寸选择 **33.53 秒／25 秒 test timeout**；真实输入、失败截图／trace、CPU 原件均保留。定向采样中 MapLibre vertex/index `bufferData` 累积约 **5.74 秒**，空间筛选约 **68ms**，不是单次输入时延。移除重复 resize 不能独自解决；MSAA 单变量 probe 改善了软件渲染。随后真实切换（不是重复同一已选区）揭示 data-driven paint expression 会 relayout，才改为固定 feature-state。
+- 最终地图 Module 唯一拥有按实际尺寸／DPR 去重的同步与正常 **350ms**聚焦／复位；输入确认先呈现，随后按原点击世界坐标进行真实 GPU pick。真实 Polygon parts 保留来源足迹／高度，使用内部数字 part IDs 与 feature-state 改色，不把合并 MultiPolygon 或 part ID 当物业。选择不重传几何；可见源几何变化在 idle 生命周期处理。原生瓦片缓存有 128 上界，窄屏系数 5→8 的依据是保留过的 City 瓦片淘汰／non-hot 样本。Workspace 消费原相机回调，不在普通展示中调用重型 debug。
+- `acceptance-desktop.log`／`acceptance-mobile.log`：生产、专用 headed Chromium **ANGLE Metal / Apple M5 Pro**；真实导航打开、从 Midtown / Fringe 切回 City 的列表及地图输入各三次。两个布局与 City 目标已预热，测量中所有目标 vector requests 均为空；先前 non-hot 样本未丢弃。下面保留全部测量，不用平均值或重试：
+
+| 视窗／输入 | 三次反馈上界 ms | 三次完整呈现上界 ms |
+|---|---|---|
+| 1600×1000／导航 | 36, 36, 36 | 185.9, 343.4, 181.1 |
+| 1600×1000／列表 | 44, 36, 36 | 519.7, 511.5, 510.3 |
+| 1600×1000／GPU 地图 | 36, 36, 36 | 574.5, 570.1, 575.5 |
+| 390×844／触屏导航 | 60, 52, 52 | 161.9, 91.5, 140.9 |
+| 390×844／触屏列表 | 52, 52, 52 | 500.1, 496.4, 498.0 |
+| 390×844／GPU 地图 tap | 60, 52, 44 | 516.1, 516.4, 494.7 |
+
+时钟从可信浏览器激活事件的 timestamp 起；反馈用 Chromium Event Timing（包含 queueing／下一呈现帧，量化加 4ms 上界），完整结果截止于实际 compositor 截图返回后的浏览器时间，包含尺寸／正常动画／截图开销。照片验证真实屋顶颜色、标签／选区及详情，不以 DOM、rAF 或 moving flag 代替完成帧。截图像素用既有 Python/Pillow 在测试进程外解码，避免在应用浏览器反复创建 2D/GPU 画布污染后续输入。命令启动至退出分别 **18.86／17.95 秒**；实际 Tools／回答范围仍与地图独立，两个场景 chat requests 均为 0。
+
+- 离线业务：**27 项通过 + TypeScript**，`final-quick-check.log` 命令共 **0.97 秒**；production build 通过，原大 bundle warning 保留。
+- 软件渲染专用回归：`final-swiftshader-focused.log` 为 **22.31 秒**，含 build、服务器／浏览器启动、profile／证据；真实同尺寸选择三次均无画布尺寸重写，关闭／重新打开后 GPU 拾取通过。`baseline-cpu-profile.json` 和 `final-cpu-profile.json` 保留原样，预热条件不同，不用 profile 差值冒充用户时延。
+- 真实地图融合／功能覆盖：最新 SwiftShader 整套在 **150.34 秒** suite deadline 截止（**22 pass、2 显式跳过硬件专用场景、5 未执行**）；剩余 5 项原导航／离线 Agent UI 另次 **21.49 秒全部通过**。已执行覆盖包含真实内区建筑橙黄、南部范围外不误染、选择切走原区恢复、missing 不画零柱、真实布局／投影／GPU 拾取、四区聚焦、筛选不重置、原生手势／相机复位、键盘／触屏、九入口／原来源／重放。这是分段覆盖，**不是一次完整 GREEN，也没有满足 60 秒整体预算**。
+- 硬件完整运行的 **28/29、96.19 秒**与 **28/29、104 秒**失败仍保留（分别发现首次反馈超限，以及 non-hot tile／窄屏预置高度竞态）；最后一次硬件全量在命令 175 秒截止只打印 8 pass，未完成。只清理核验过 cwd／专用浏览器路径的本项目 orphan 进程；这些记录不被专用 GREEN 覆盖。整套组织、超预算／挂起反馈属于 #5，冷启动／15 秒降级属于 #4，本票不宣称已交付它们。
+- 实时模型：**未执行**；历史 Run 重放／离线错误不是新模型实测。用户视觉／业务验收与 Issue #1 原独立 Closure 保持未完成。本票八图仍完整，目标架构／时序已在 #3 正文细化为原生输入确认与 GPU pick，公共 Interface 与知识归属不扩大。
+
+## 集成详情与地图性能（修复前 main 基线，未验收）
 
 相关实现和测试已按用户授权保存为 main 代码基线 `52d205ad700a6940dfee015a21c2795a27d8d29c`；初始化约定与状态文档另行提交。基线带已知 RED，目的是让后续修复可重复定位，不把提交当作性能通过。当前保持三个 Tickets，不新建分支或 worktree，不自动启动 Ralph。
 
-- 当前代码包含真实布局占位的左侧集成详情、独立选择颜色，以及拆分底图 Polygon／MultiPolygon 足迹的原生建筑渲染。橙黄色只表示选择，建筑不代表逐栋市场指标；最新版本尚无全量复验或用户视觉接受。
+- 该基线包含真实布局占位的左侧集成详情、独立选择颜色，以及拆分底图 Polygon／MultiPolygon 足迹的原生建筑渲染。橙黄色只表示选择，建筑不代表逐栋市场指标；最新版本尚无全量复验或用户视觉接受。
 - 最近完整浏览器运行为 **26 项：24 通过、2 超时，约 5.9 分钟**；该运行早于最新原生建筑替换，原记录为 `artifacts/left-detail/e2e.log`，不能绑定为最新版本通过。
-- 最新原生建筑版本的聚焦回归仍有两个失败，见 `artifacts/left-detail/camera-navigation-native-parts.log`：相机约 49.2 秒，在 Reset map 后等回初始 pose 时超时；板块约 39.5 秒，在历史 event-card 数量检查时超时。记录的是症状，不是已证明的根因或修复。
+- 该基线原生建筑版本的聚焦回归有两个失败，见 `artifacts/left-detail/camera-navigation-native-parts.log`：相机约 49.2 秒，在 Reset map 后等回初始 pose 时超时；板块约 39.5 秒，在历史 event-card 数量检查时超时。记录的是症状，不是已证明的根因或修复。
 - 已有 TypeScript／production build 成功记录 `artifacts/left-detail/build.log`，但它们不证明时延、真实建筑颜色或完整端到端达标。准备本次 main 基线提交时重新执行离线 Python 测试 **27 项通过（0.704 秒）**及 TypeScript 检查，日志为 `artifacts/specs/initialization-python-check.log`、`initialization-typecheck.log`；没有调用模型。
 - `artifacts/left-detail/cpu-profile.json` 与 `cpu-profile-summary.json` 保存一次 SwiftShader 序列的采样：`_resizeCanvas` 累积 self time 约 16.7 秒，两个 `bufferData` 热点合计约 9 秒，建筑区域筛选约 0.09 秒。不是单次输入到可见结果的延迟，也不是硬件 GPU 验收；相关失败 traces／截图原件保留。
 - 最新预算及测量口径以 `docs/specs/map-performance.md`／Spec #2 为准，完整无模型回归已收紧为 **60 秒**。三个 Tickets 保留：[#3](https://github.com/liu-qingyuan/london-office-monitor/issues/3)、[#4](https://github.com/liu-qingyuan/london-office-monitor/issues/4)、[#5](https://github.com/liu-qingyuan/london-office-monitor/issues/5)，#5 依赖前两条。预算尚未证明可达，不以改大超时、删覆盖、假地图或重试转绿验收。

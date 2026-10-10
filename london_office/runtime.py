@@ -111,7 +111,8 @@ def grounded_answer(payload: dict, events: list[dict]) -> dict:
         "evidence": [e for e in evidence.values() if e["source_id"] in answer.source_ids],
         "notes": [n for n in notes.values() if n["source_id"] in answer.source_ids],
         "warnings": list(dict.fromkeys(warnings)),
-        "tool_calls": [{"name": e["name"], "arguments": e["arguments"], "ok": e["ok"]} for e in events]}
+        # Only business execution fields, never SDK events/config or local trace paths.
+        "tool_calls": [{"name": e["name"], "arguments": e["arguments"], "ok": e["ok"], "output": e["output"]} for e in events]}
 
 
 @dataclass

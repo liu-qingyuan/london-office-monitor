@@ -1,6 +1,8 @@
 """Offline runtime-contract tests: no authentication or model calls."""
+import json
 import unittest
 from unittest.mock import patch
+from london_office.data import ROOT
 from london_office.runtime import AgentError, grounded_answer, sdk_config
 from london_office.settings import Settings
 from london_office.tools import BusinessTools
@@ -38,6 +40,25 @@ class RuntimeTests(unittest.TestCase):
         with self.assertRaises(AgentError):
             grounded_answer(answer, [])
 
+    def test_tool_results_cross_answer_interface_as_actual_business_outputs(self):
+        arguments = {"area":"city", "metric":"prime_rent", "previous_period":"2024-YE", "current_period":"2025-YE"}
+        output = BusinessTools().call("compare_periods", arguments)
+        events = [{"name":"compare_periods", "arguments":arguments, "ok":True,
+            "output":output, "call_id":"local-trace-only", "at":"local-trace-only"},
+            {"name":"market_query", "arguments":{"metric":"invalid"}, "ok":False,
+             "output":{"error":{"code":"tool_error", "message":"Invalid tool arguments"}}}]
+        answer = {"answer":"The reported rent rose; the Python comparison retains the source definitions.",
+            "fact_ids":["city-prime-2024","city-prime-2025"],
+            "calculation_ids":["change:city:prime_rent:2024-YE:2025-YE"],
+            "source_ids":["savills-2024-q4","savills-2025-q4"], "warnings":[]}
+        result = grounded_answer(answer, events)
+        self.assertEqual(result["tool_calls"][0]["output"], output)
+        self.assertEqual(result["tool_calls"][0]["arguments"], arguments)
+        self.assertEqual(result["tool_calls"][1]["output"], events[1]["output"])
+        self.assertFalse(result["tool_calls"][1]["ok"])
+        self.assertEqual(set(result["tool_calls"][0]), {"name","arguments","ok","output"})
+        self.assertEqual(result["calculations"][0]["change_value"], 6.75)
+
     def test_dates_and_other_regions_are_not_numeric_prose_evidence(self):
         # Offline adversarial output-boundary test, NOT an actual model answer.
         output = BusinessTools().call("market_brief", {"period":"2025-YE"})
@@ -49,6 +70,21 @@ class RuntimeTests(unittest.TestCase):
         result = grounded_answer(answer,events)
         self.assertEqual(result["facts"][0]["value"],105.26)
         self.assertEqual(result["facts"][0]["area_id"],"city")
+
+    def test_recorded_user_run_keeps_city_evidence_separate_from_canary_map_selection(self):
+        fixture = json.loads((ROOT / "frontend/tests/fixtures/city-rent-recorded-run.json").read_text())
+        expected = fixture["response"]
+        payload = {"answer":expected["answer"], "fact_ids":[f["id"] for f in expected["facts"]],
+            "calculation_ids":[c["id"] for c in expected["calculations"]],
+            "source_ids":[s["id"] for s in expected["sources"]], "warnings":[]}
+        result = grounded_answer(payload, expected["tool_calls"])
+        self.assertEqual(fixture["context"]["area_id"], "canary_wharf")
+        self.assertEqual({f["area_id"] for f in result["facts"]}, {"city"})
+        self.assertEqual([f["value"] for f in result["facts"]], [98.6,105.26])
+        self.assertEqual(result["calculations"][0]["change_value"], 6.75)
+        self.assertEqual(result["tool_calls"], expected["tool_calls"])
+        for call in result["tool_calls"]:
+            self.assertEqual(call["output"], BusinessTools().call(call["name"], call["arguments"]))
 
     def test_missingness_negation_is_not_an_observed_zero(self):
         output = BusinessTools().call("market_query", {"area":"canary_wharf", "metric":"prime_rent", "period":"2025-YE"})

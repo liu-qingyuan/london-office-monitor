@@ -1,4 +1,5 @@
 import {test, expect} from '@playwright/test';
+import {openSection} from './navigation';
 import {mkdir} from 'node:fs/promises';
 import type {Catalog, Market} from '../src/types';
 
@@ -14,7 +15,8 @@ test('real API provides four areas, missing is not zero, and filters change peri
   const market = await response.json() as Market;
   expect(market.observations).toHaveLength(4);
   await page.goto('/');
-  await expect(page.getByRole('heading', {name: 'London, in context.'})).toBeVisible();
+  await openSection(page);
+  await expect(page.getByRole('heading', {name: 'London office markets'})).toBeVisible();
   await expect(page.getByRole('heading', {name: 'Area overview'})).toBeVisible();
   const rows = page.locator('.area-row');
   await expect(rows).toHaveCount(4);
@@ -42,15 +44,19 @@ test('real City values, Python comparison and original evidence appear in detail
   expect(value?.status).toBe('available');
   const calculated = current.comparisons.find(c => c.area_id === 'city');
   await page.goto('/');
+  await openSection(page);
   await expect(page.locator('.area-row[data-area="city"]')).toContainText('£');
   await expect(page.getByRole('heading', {name: 'City', exact: true})).toBeVisible();
   const detail = page.locator('#detail-content');
-  await expect(detail.locator('.trend-card')).toHaveCount(2);
+  await expect(detail.locator('.snapshot-chart .chart-bar')).toHaveCount(2);
+  await expect(detail.locator('.snapshot-chart')).toContainText('Unit: GBP/sq ft');
   await expect(detail).toContainText(String(previous.observations[0]?.value));
   await expect(detail).toContainText(String(value?.value));
   if (calculated?.change_value !== null && calculated?.change_value !== undefined) {
     await expect(detail.locator('.comparison')).toContainText(String(calculated.change_value));
   }
+  await detail.locator('.evidence-card').first().locator('summary').click();
+  await expect(detail.getByRole('link', {name: 'Read original source ↗'}).first()).toBeVisible();
   await expect(detail.getByRole('link', {name: 'Read original source ↗'}).first()).toHaveAttribute('href', /^https:\/\//);
   await expect(detail).toContainText('Historical reporting · not live news');
   await page.locator('.area-row[data-area="canary_wharf"]').click();
@@ -78,13 +84,22 @@ test('WebGL2 interleaved deck canvas draws backend geometry and supports actual 
   await expect(page.locator('#map-tooltip')).toContainText('Value:');
   const westEnd = catalog.areas.find(area => area.id === 'west_end');
   expect(westEnd).toBeDefined();
+  // West End is outside the detailed 3D City view. Zoom out using the real
+  // camera control, then click its projected backend polygon, not a list row.
+  await page.getByRole('button',{name:'Zoom out',exact:true}).click();
+  await expect.poll(()=>page.evaluate(()=>window.__officeMapDebug!.state().zoom)).toBeCloseTo(13.05,4);
+  await expect.poll(()=>page.evaluate(()=>window.__officeMapDebug!.state().moving)).toBe(false);
   const westPoint = await page.evaluate(center => window.__officeMapDebug?.project(center), westEnd!.center);
   expect(westPoint).not.toBeNull();
+  expect(westPoint!.x).toBeGreaterThan(0);
+  expect(westPoint!.x).toBeLessThan(box!.width);
+  await page.mouse.move(box!.x + westPoint!.x, box!.y + westPoint!.y);
+  await expect(page.locator('#map-tooltip')).toContainText('West End');
   await page.mouse.click(box!.x + westPoint!.x, box!.y + westPoint!.y);
   await expect(page.locator('.area-row[data-area="west_end"]')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.locator('#detail-content h3')).toHaveText('West End');
-  await mkdir('../artifacts', {recursive: true});
-  await page.locator('.map-wrap').screenshot({path: '../artifacts/london-map.png'});
+  await mkdir('../artifacts/left-detail', {recursive: true});
+  await page.locator('.map-wrap').screenshot({path: '../artifacts/left-detail/london-map-e2e.png'});
   expect(errors).toEqual([]);
 });
 
@@ -111,6 +126,7 @@ test('question suggestions do not silently call the agent', async ({page}) => {
   page.on('request', req => { if (req.url().includes('/api/chat')) chatRequests.push(req.url()); });
   await page.goto('/');
   await expect(page.locator('.area-row')).toHaveCount(4);
+  await page.getByRole('button', {name: 'Ask Agent', exact:true}).first().click();
   await page.getByRole('button', {name: 'City rent change ↗'}).click();
   await expect(page.getByRole('textbox', {name: 'YOUR QUESTION'})).toHaveValue(/City average prime achieved rent/);
   expect(chatRequests).toEqual([]);
@@ -120,6 +136,7 @@ test('question suggestions do not silently call the agent', async ({page}) => {
 test('offline Agent errors are visible and never presented as an AI answer', async ({page}) => {
   await page.goto('/');
   await expect(page.locator('.area-row')).toHaveCount(4);
+  await page.getByRole('button', {name: 'Ask Agent', exact:true}).first().click();
   await page.getByRole('textbox', {name: 'YOUR QUESTION'}).fill('Compare City rent from the two historical reports.');
   await page.getByRole('button', {name: 'Ask assistant'}).click();
   await expect(page.locator('#agent-result')).toContainText('agent_disabled');

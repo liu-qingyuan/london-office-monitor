@@ -16,6 +16,8 @@ try {
   if (!catalog.agent.enabled || catalog.agent.auth_mode !== 'subscription') throw new Error('Real UI smoke requires explicit subscription-mode local server');
   await page.goto(evidence.base_url);
   await expect(page.locator('.area-row')).toHaveCount(4);
+  await page.getByRole('button',{name:'Submarkets',exact:true}).click();
+  await page.getByRole('button',{name:'Ask Agent',exact:true}).first().click();
   const questions = [
     'Compare City overall vacancy in the two historical report periods. Use the Python calculation and show percentage points, not Grade A tower vacancy. Keep answer/warnings qualitative; Python cards carry all figures and dates.',
     'Now, is there a verified comparable average prime achieved rent observation for Canary Wharf in the selected report period? Do not estimate. Keep answer/warnings qualitative; Python fact cards show missingness.'
@@ -23,6 +25,12 @@ try {
   for (let i=0;i<questions.length;i++) {
     if (i===1) {
       await expect.poll(() => page.evaluate(() => window.__officeMapDebug?.state().geometryCount)).toBe(4);
+      // The detailed City view does not place Canary Wharf inside the canvas.
+      // Use the actual zoom controls before projecting and clicking its selector.
+      await page.getByRole('button',{name:'Zoom out',exact:true}).click();
+      await expect.poll(()=>page.evaluate(()=>window.__officeMapDebug.state().zoom)).toBeLessThan(13.2);
+      await page.getByRole('button',{name:'Zoom out',exact:true}).click();
+      await expect.poll(()=>page.evaluate(()=>window.__officeMapDebug.state().zoom)).toBeLessThan(12.2);
       const area=catalog.areas.find(a=>a.id==='canary_wharf');
       const point=await page.evaluate(center=>window.__officeMapDebug.project(center),area.center);
       const box=await page.locator('#map').boundingBox();

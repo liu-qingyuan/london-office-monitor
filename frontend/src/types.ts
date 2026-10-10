@@ -35,9 +35,19 @@ export interface Market {
   notes: Note[]; geometry: Geometry; warnings: string[];
   dataset: {label: string; data_kind: string; as_of: string; last_reviewed_at: string; is_live: false};
 }
+export interface ToolOutput {
+  observations?: Observation[]; comparisons?: Comparison[]; sources?: Source[];
+  evidence?: Evidence[]; notes?: Note[]; error?: {code: string; message: string};
+  [key: string]: unknown;
+}
+export interface ToolCall {
+  name: string; arguments: Record<string, unknown>; ok: boolean;
+  // Older saved responses omit output. Never fabricate it from selected facts.
+  output?: ToolOutput;
+}
 export interface ChatResult {
   schema_version: number; session_id: string; run_id: string; status: 'completed'; answer: string;
   facts: Observation[]; calculations: Comparison[]; sources: Source[]; evidence: Evidence[];
-  notes: Note[]; warnings: string[]; tool_calls: {name: string; arguments: unknown; ok: boolean}[];
+  notes: Note[]; warnings: string[]; tool_calls: ToolCall[];
 }
 export interface ApiError {status: 'error'; error: {code: string; message: string}}

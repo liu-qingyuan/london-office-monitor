@@ -1,0 +1,293 @@
+{
+  "kind": "recorded_real_run_replay_with_expected_tool_output_extension",
+  "recorded_run_id": "03856fc9-2409-43f4-a2df-97bb9c62e37d",
+  "question": "What changed in City average prime achieved rent from 2024 year-end to 2025 year-end?",
+  "context": {
+    "area_id": "canary_wharf",
+    "metric": "grade_a_rent",
+    "period": "2024-YE"
+  },
+  "response": {
+    "schema_version": 1,
+    "session_id": "ec24bddb-0d3f-4d72-a56d-fcc2d62f95ec",
+    "run_id": "03856fc9-2409-43f4-a2df-97bb9c62e37d",
+    "status": "completed",
+    "answer": "City average prime achieved rent rose between the requested year-end snapshots, reaching a reported record high. This is achieved rent, not top or headline rent.",
+    "facts": [
+      {
+        "id": "city-prime-2024",
+        "area_id": "city",
+        "source_area": "City",
+        "metric": "prime_rent",
+        "period": "2024-YE",
+        "value": 98.6,
+        "status": "available",
+        "unit": "GBP/sq ft",
+        "definition": "Savills average prime achieved office rent, based on transaction evidence; not top rent or prime headline rent. Reported year-end value; averaging window and billing period not stated.",
+        "definition_id": "savills-average-prime-achieved",
+        "billing_period": "not_stated_by_source",
+        "source_id": "savills-2024-q4",
+        "evidence_id": "s24-city-prime",
+        "data_kind": "historical_market",
+        "spatial_granularity": "submarket",
+        "warnings": []
+      },
+      {
+        "id": "city-prime-2025",
+        "area_id": "city",
+        "source_area": "City",
+        "metric": "prime_rent",
+        "period": "2025-YE",
+        "value": 105.26,
+        "status": "available",
+        "unit": "GBP/sq ft",
+        "definition": "Savills average prime achieved office rent, based on transaction evidence; not top rent or prime headline rent. Reported year-end value; averaging window and billing period not stated.",
+        "definition_id": "savills-average-prime-achieved",
+        "billing_period": "not_stated_by_source",
+        "source_id": "savills-2025-q4",
+        "evidence_id": "s25-city-prime",
+        "data_kind": "historical_market",
+        "spatial_granularity": "submarket",
+        "warnings": [],
+        "reported_change_pct": 6.8
+      }
+    ],
+    "calculations": [
+      {
+        "id": "change:city:prime_rent:2024-YE:2025-YE",
+        "area_id": "city",
+        "metric": "prime_rent",
+        "previous_period": "2024-YE",
+        "current_period": "2025-YE",
+        "previous_value": 98.6,
+        "current_value": 105.26,
+        "change_value": 6.75,
+        "change_unit": "%",
+        "status": "available",
+        "source_ids": [
+          "savills-2024-q4",
+          "savills-2025-q4"
+        ],
+        "evidence_ids": [
+          "s24-city-prime",
+          "s25-city-prime"
+        ],
+        "reported_change_pct": 6.8,
+        "warnings": []
+      }
+    ],
+    "sources": [
+      {
+        "id": "savills-2024-q4",
+        "publisher": "Savills",
+        "title": "Central London Office Market Watch Q4 2024",
+        "url": "https://www.savills.co.uk/research_articles/229130/372062-0",
+        "published_at": "2025-01-31",
+        "report_period": "2024-YE",
+        "retrieved_at": "2026-10-09T15:27:55Z",
+        "verification_status": "reviewed_excerpt",
+        "usage_note": "Short factual extracts with attribution and original links. No license to redistribute the full report or its charts has been verified; no such material is included."
+      },
+      {
+        "id": "savills-2025-q4",
+        "publisher": "Savills",
+        "title": "Central London Office Market Watch Q4 2025",
+        "url": "https://www.savills.co.uk/research_articles/229130/386949-0",
+        "published_at": "2026-01-30",
+        "report_period": "2025-YE",
+        "retrieved_at": "2026-10-09T15:27:55Z",
+        "verification_status": "reviewed_excerpt",
+        "usage_note": "Short factual extracts with attribution and original links. No license to redistribute the full report or its charts has been verified; no such material is included."
+      }
+    ],
+    "evidence": [
+      {
+        "id": "s24-city-prime",
+        "source_id": "savills-2024-q4",
+        "section": "rents",
+        "quote": "At the end of 2024, the average City prime rent stood at £98.60 per sq ft"
+      },
+      {
+        "id": "s24-quality",
+        "source_id": "savills-2024-q4",
+        "section": "leasing",
+        "quote": "recently redeveloped or comprehensively refurbished office space accounted for 68% of space acquired during 2024"
+      },
+      {
+        "id": "s25-city-prime",
+        "source_id": "savills-2025-q4",
+        "section": "rents",
+        "quote": "the average City Prime rent reached a new record high of £105.26 per sq ft, which was up 6.8% on the previous year."
+      },
+      {
+        "id": "s25-quality",
+        "source_id": "savills-2025-q4",
+        "section": "leasing",
+        "quote": "lettings in recently developed or comprehensively refurbished offices accounting for 77% of space acquired during 2025"
+      },
+      {
+        "id": "s25-prelets",
+        "source_id": "savills-2025-q4",
+        "section": "leasing",
+        "quote": "Gibson Dunn’s pre-letting of the 9th–12th floors (153,116 sq ft), and FTI Consulting’s pre-let of the 1st–3rd (144,452 sq ft) at PNB’s 1 Exchange Square, EC2."
+      },
+      {
+        "id": "s25-refurbishment",
+        "source_id": "savills-2025-q4",
+        "section": "development",
+        "quote": "comprehensive refurbishments accounting for 65% of the number of schemes set for delivery over the next four years (51% by sq ft)"
+      }
+    ],
+    "notes": [],
+    "warnings": [
+      "Historical report snapshots, not a live market feed. Interpretation is AI-generated; verified numeric facts and calculations are shown separately."
+    ],
+    "tool_calls": [
+      {
+        "name": "compare_periods",
+        "arguments": {
+          "area": "city",
+          "metric": "prime_rent",
+          "previous_period": "2024-YE",
+          "current_period": "2025-YE"
+        },
+        "ok": true,
+        "output": {
+          "observations": [
+            {
+              "id": "city-prime-2024",
+              "area_id": "city",
+              "source_area": "City",
+              "metric": "prime_rent",
+              "period": "2024-YE",
+              "value": 98.6,
+              "status": "available",
+              "unit": "GBP/sq ft",
+              "definition": "Savills average prime achieved office rent, based on transaction evidence; not top rent or prime headline rent. Reported year-end value; averaging window and billing period not stated.",
+              "definition_id": "savills-average-prime-achieved",
+              "billing_period": "not_stated_by_source",
+              "source_id": "savills-2024-q4",
+              "evidence_id": "s24-city-prime",
+              "data_kind": "historical_market",
+              "spatial_granularity": "submarket",
+              "warnings": []
+            },
+            {
+              "id": "city-prime-2025",
+              "area_id": "city",
+              "source_area": "City",
+              "metric": "prime_rent",
+              "period": "2025-YE",
+              "value": 105.26,
+              "status": "available",
+              "unit": "GBP/sq ft",
+              "definition": "Savills average prime achieved office rent, based on transaction evidence; not top rent or prime headline rent. Reported year-end value; averaging window and billing period not stated.",
+              "definition_id": "savills-average-prime-achieved",
+              "billing_period": "not_stated_by_source",
+              "source_id": "savills-2025-q4",
+              "evidence_id": "s25-city-prime",
+              "data_kind": "historical_market",
+              "spatial_granularity": "submarket",
+              "warnings": [],
+              "reported_change_pct": 6.8
+            }
+          ],
+          "comparisons": [
+            {
+              "id": "change:city:prime_rent:2024-YE:2025-YE",
+              "area_id": "city",
+              "metric": "prime_rent",
+              "previous_period": "2024-YE",
+              "current_period": "2025-YE",
+              "previous_value": 98.6,
+              "current_value": 105.26,
+              "change_value": 6.75,
+              "change_unit": "%",
+              "status": "available",
+              "source_ids": [
+                "savills-2024-q4",
+                "savills-2025-q4"
+              ],
+              "evidence_ids": [
+                "s24-city-prime",
+                "s25-city-prime"
+              ],
+              "reported_change_pct": 6.8,
+              "warnings": []
+            }
+          ],
+          "sources": [
+            {
+              "id": "savills-2024-q4",
+              "publisher": "Savills",
+              "title": "Central London Office Market Watch Q4 2024",
+              "url": "https://www.savills.co.uk/research_articles/229130/372062-0",
+              "published_at": "2025-01-31",
+              "report_period": "2024-YE",
+              "retrieved_at": "2026-10-09T15:27:55Z",
+              "verification_status": "reviewed_excerpt",
+              "usage_note": "Short factual extracts with attribution and original links. No license to redistribute the full report or its charts has been verified; no such material is included."
+            },
+            {
+              "id": "savills-2025-q4",
+              "publisher": "Savills",
+              "title": "Central London Office Market Watch Q4 2025",
+              "url": "https://www.savills.co.uk/research_articles/229130/386949-0",
+              "published_at": "2026-01-30",
+              "report_period": "2025-YE",
+              "retrieved_at": "2026-10-09T15:27:55Z",
+              "verification_status": "reviewed_excerpt",
+              "usage_note": "Short factual extracts with attribution and original links. No license to redistribute the full report or its charts has been verified; no such material is included."
+            }
+          ],
+          "evidence": [
+            {
+              "id": "s24-city-prime",
+              "source_id": "savills-2024-q4",
+              "section": "rents",
+              "quote": "At the end of 2024, the average City prime rent stood at £98.60 per sq ft"
+            },
+            {
+              "id": "s24-quality",
+              "source_id": "savills-2024-q4",
+              "section": "leasing",
+              "quote": "recently redeveloped or comprehensively refurbished office space accounted for 68% of space acquired during 2024"
+            },
+            {
+              "id": "s25-city-prime",
+              "source_id": "savills-2025-q4",
+              "section": "rents",
+              "quote": "the average City Prime rent reached a new record high of £105.26 per sq ft, which was up 6.8% on the previous year."
+            },
+            {
+              "id": "s25-quality",
+              "source_id": "savills-2025-q4",
+              "section": "leasing",
+              "quote": "lettings in recently developed or comprehensively refurbished offices accounting for 77% of space acquired during 2025"
+            },
+            {
+              "id": "s25-prelets",
+              "source_id": "savills-2025-q4",
+              "section": "leasing",
+              "quote": "Gibson Dunn’s pre-letting of the 9th–12th floors (153,116 sq ft), and FTI Consulting’s pre-let of the 1st–3rd (144,452 sq ft) at PNB’s 1 Exchange Square, EC2."
+            },
+            {
+              "id": "s25-refurbishment",
+              "source_id": "savills-2025-q4",
+              "section": "development",
+              "quote": "comprehensive refurbishments accounting for 65% of the number of schemes set for delivery over the next four years (51% by sq ft)"
+            }
+          ],
+          "warnings": [],
+          "dataset": {
+            "label": "Savills London office year-end reports: reviewed historical extracts",
+            "data_kind": "historical_market",
+            "as_of": "2025-12-31",
+            "last_reviewed_at": "2026-10-09T15:27:55Z",
+            "is_live": false
+          }
+        }
+      }
+    ]
+  }
+}

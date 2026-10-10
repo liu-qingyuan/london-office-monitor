@@ -46,6 +46,13 @@
 
 HTTP 结果中的数字、比较及事实面板都由同一 Python Market Module 生成。前端不重新计算增长率。
 
+## 可视化导航（不扩展业务数据合同）
+
+- 右侧默认完整图标列；hover/focus 仅在同一条玻璃栏展开名称，移开收窄，明确点击才进入内容。没有单一 orb 或独立弹出菜单，导航与内容状态独立。小屏为相同图标的水平可滚动栏，触屏第一触显示名称、下一触选择；键盘和 Escape 可操作。展开导航不改指标，打开任何导航/板块不发送模型请求。
+- 九板块只是信息布局，不表示新增指标或已实现完整测评覆盖。Rents 使用原 prime / Grade A；Vacancy 使用原 overall vacancy，不替代 availability。Map layers 仅选择现有指标镜头，并说明真实城市背景与示意区域。
+- Leasing / Supply / Demand / News 按 Python `notes.kind` 展示既有历史报告 context，不由前端再分类或推算为量化序列。来源原本是 Central London scope 时不展示为当前地图选中区的统计。
+- 未接入的指标/新闻流明确显示 Not connected。该接入状态不创建 observation，不等同于 Python 的 missing/conflict，更不使用 0、估值或虚构趋势。
+
 ## POST /api/chat
 
 输入：`{question:string, session_id?:string, context?:{area_id?:string,metric?:string,period?:string}}`。问题长度 1–2000；不存在的会话、区域或口径是显式错误。单会话一次只运行一轮；首版会话仅保存在内存中，服务器重启后失效。
@@ -54,11 +61,14 @@ HTTP 结果中的数字、比较及事实面板都由同一 Python Market Module
 
 - `answer` 是模型基于工具证据的**定性解释**；模型自己的 `answer/warnings` 文本不能重写金额、比例、年份或日期等数值（包括拼写数量）。所有数字及其区域/指标/时期/单位/来源绑定仅在 Python 生成的事实、计算与来源对象中展示。这样防止把已见过的年份或其他区域数字误绑成价格。事实/计算卡片从本轮工具返回构造，所选对象的全部来源引用需验证。定性语义仍是 AI 解释，不承诺自动证明每一语义断言。
 - `facts` 是上述 observation；`calculations` 是上述 comparison；`sources/evidence/notes` 同上。
-- `tool_calls` 是实际 Python 工具执行：`{name,arguments,ok}`。详细输出只保存在本地 JSONL（`var/` 不提交）。
+- `tool_calls` 是实际 Python 工具执行：`{name,arguments,ok,output}`。`output` 是该次只读工具事件的原始业务 JSON（失败时保留该次业务错误），不是由模型编写，也不是从选中的 `facts` 重建。浏览器显示返回摘要，并可展开精确输入/完整输出；SDK 事件、配置、凭据、trace 路径和账户信息不进入此对象。旧保存的 v1 回答没有 `output` 时，前端明确表示不可用，不伪造工具结果。新增字段不改变请求、endpoint、工具权限或数值 guard；完整本地运行记录仍只在 JSONL（`var/` 不提交）。
+- 地图 `context` 仅是选中范围；明确的 `question` 优先。界面按实际返回的 `facts/calculations` 标出回答范围，保留提交时问题/选择，不把以后变化的地图选择当成旧回答的查询范围。默认展示 Python 数值/单位/时期/比较与来源；模型定性解读单独标注。
 - 工具未执行、结构化回答不合法、引用不在本轮证据中、出现无证据数值、未登录、账户模型不可用、运行超时或预算耗尽均返回清晰错误；不以离线模板伪装模型回答。
 - `status:error` 的响应包含 `error:{code,message}`，不泄漏 SDK 原始配置或凭据。
 
 ## 允许的 Python 业务工具
+
+此处权限约束的是应用里的市场 Agent，不是编码 Agent；开发角色与任务范围见根 `AGENTS.md`。研究／自动发布目前只是设计概念，没有对应业务工具或执行授权。
 
 `market_catalog()`、`market_query(area, metric, period)`、`compare_periods(area, metric, previous_period, current_period)`、`market_brief(period, area?)`、`source_details(source_id)`、`verify_source(source_id)`。只读，通过项目内 MCP 暴露；精确批准这些工具，禁止 shell、web search、个人 MCP、外部 Agent。
 

@@ -6,12 +6,29 @@
 
 - Savills **2024 / 2025 年末**报告中的 City / West End 平均 prime 成交租金、平均 Grade A 租金和整体空置率；11 条真实历史观察。
 - Python 比较两期数值、区分租金百分比与空置率百分点、保留机构公布同比与计算差异、处理缺失/冲突并给出原文。
-- 地图悬停、点击、指标/时期切换、两期值、需求驱动/报告事件，以及按需 Agent 对话。
+- **可探索伦敦 3D 地图**：地图铺满视窗，原生平移/缩放/旋转/俯仰、子市场悬停与聚焦、比例尺及总览复位。右侧是 **visionOS 风格玻璃图标列**：默认只显示九个导航 icon，同一栏 hover/focus 展开文字，移开收回；没有圆球入口或独立弹出菜单，点击才打开对应内容。板块为子市场、租金、空置与可租赁率、租赁、供应、宏观、需求、新闻、地图图层；只展示既有历史数据/报告 context，未接入的明确标注 **Not connected**，不是已实现全部指标。顶部 Agent 胶囊独立展开，默认显示 Python 数值/图表/计算与 AI 解读，可展开实际工具输入/输出。
 - Canary Wharf 与 Midtown / Fringe 缺少**同口径**资料时保留缺失。四个地图范围均为手绘选择区域，**不是官方报告边界或建筑级统计**。
-- 历史报告摘录**不是实时/最新市场覆盖**；没有实时新闻流、精确 GIS、建筑高度覆盖或后台自动发现新报告的声明。
+- 历史报告摘录**不是实时/最新市场覆盖**；没有实时新闻流、精确报告 GIS、实测建筑高度覆盖或后台自动发现新报告的声明。3D 建筑来自 OpenFreeMap / OpenMapTiles，只作空间背景，不代表逐栋租金/空置率；没有高度的建筑不由界面编造高度。
 - 租金按原文 £/sq ft；计费周期未明示，不自行添加 per annum。Prime achieved、headline/top、Grade A 和不同空置群体不可互换。
 
-本机已通过 **25 项 Python 测试、6 项离线地图 E2E 与真实订阅 SDK／网页双轮交互**；保留失败记录，原 CLI 三轮脚本未整次通过，独立 review Closure 尚未完成。完整证据和限制见 [`docs/verification.md`](docs/verification.md)。运行者需要自己的有效登录；未登录时显示明确错误，不用离线模板假装 AI。
+## 实施入口与当前状态
+
+**当前是未验收的性能基线，不是全部回归通过的版本。** 最新完整浏览器记录为 26 项、24 通过和 2 超时（约 5.9 分钟），发生在最新原生建筑渲染替换前；最新两项相机／导航聚焦回归仍失败，尚无最新全量或性能通过证明。此前 21 项浏览器 GREEN 只属于历史版本；本次准备 main 基线提交重跑的 27 项离线 Python 测试和类型检查通过，不证明端到端或性能达标。实时 SDK 历史记录不证明当前界面已实测，独立 review Closure 和用户产品验收仍未完成。具体已知失败、版本限制和原始证据以 [`docs/verification.md`](docs/verification.md) 为准。
+
+相关实现／测试已保存为 main 代码基线 `52d205ad700a6940dfee015a21c2795a27d8d29c`，已知失败不因此变绿。当前使用 main，不新建分支或 worktree；代码提交不自动启动 Ralph。当前工作是先恢复既有地图性能，不扩展地区检索、研究或发布。权威要求见 [Spec #2](https://github.com/liu-qingyuan/london-office-monitor/issues/2)，正文镜像为 [`docs/specs/map-performance.md`](docs/specs/map-performance.md)：完整无模型回归上限已收紧为 **60 秒**，不是固定等待时间或已通过声明。保留 [#3 热态交互](https://github.com/liu-qingyuan/london-office-monitor/issues/3)、[#4 冷启动／降级](https://github.com/liu-qingyuan/london-office-monitor/issues/4)、[#5 验证反馈](https://github.com/liu-qingyuan/london-office-monitor/issues/5) 三票；#5 依赖 #3、#4。
+
+编码 Agent 的完整开发工具权限与应用市场 Agent 的六工具只读权限分开，见 [`AGENTS.md`](AGENTS.md)。初始化先读当前 Ticket 正文／评论、同一份 [`GLOSSARY.md`](GLOSSARY.md)、[`docs/contracts.md`](docs/contracts.md) 和相关 [`docs/adr/`](docs/adr/)，明确当前任务范围与已知失败；不因“工具能做”顺手扩大任务。
+
+| Module／职责 | 定位入口 | 关键限制 |
+|---|---|---|
+| 数据与来源 | `london_office/data.py`、`data/README.md` | 快照、摘录及引用校验；不自动发现或发布报告 |
+| Market | `london_office/market.py` | Python 数值、口径、比较和 missing／conflict；HTTP 与工具共享同一业务表面 |
+| HTTP Interface | `london_office/app.py`、`london_office/tools.py` | 既有业务 JSON 与六工具；不把 SDK 对象传给 UI |
+| Workspace | `frontend/src/main.ts`、`frontend/src/types.ts` | 导航、详情及回答范围；消费 Python 事实，不重算市场指标 |
+| 地图 | `frontend/src/map.ts` | 私有尺寸／空间／渲染生命周期；真实建筑仅为空间背景 |
+| Codex Adapter | `london_office/runtime.py`、`london_office/settings.py`、`london_office/mcp_server.py` | 应用 Agent 的 SDK、认证、工具权限及回答校验；不读取个人配置 |
+
+捕获慢症状后先建立最小真实复现并做定向 profile，再继续修复；普通编辑跑最短必要验证，不每次跑全套。当前检查入口见下文与 `frontend/package.json`／`frontend/playwright.config.ts`，不另造运行器。TypeScript 编译通过不等于 HTTP 合同、权限或可见帧时延已验证。
 
 ## 快速启动
 
@@ -39,6 +56,17 @@ python3.12 -m venv .venv
 ```
 
 前端仍需 `npm ci && npm run build`。不需要安装全局 Codex；Python SDK 使用已固定的 CLI runtime。
+
+## 地图操作
+
+- 拖动平移、滚轮缩放；右键拖动改变朝向与俯仰，触屏使用地图原生手势。
+- 悬停示意区域查看名称、当前指标、时期与单位；点击区域聚焦并更新详情。右侧图标列 hover/focus 只展开同一栏的名称，移开收回；点击图标/名称才打开板块。桌面图标列固定在页面右侧，文字只向左展开，icon 坐标不变；键盘 Enter 选择、Escape 收起。小屏采用同一组 icon 的水平可滚动栏，触屏第一触显示名称、下一触明确选择。内容不会因移开鼠标而关闭，关闭按钮或 Escape 可返回地图。
+- 地图底部提供缩放、旋转、倾斜、俯视与 **Overview** 复位；左侧指南针朝北复位，信息按钮解释空间数据来源与限制。
+- 切换指标/时期不会重置镜头。两期条形图只展示真实已有值，缺失不画零柱、不补估计。
+- 在集成详情展开年份来源，查看原始短摘录及出处。顶部 **Ask about this market…** 胶囊输入问题；聚焦/建议不发送模型请求，主动按箭头或 Enter 才发送。回答默认展示数值、图表、Python 比较、来源与 AI 定性解读；**Tools used** 可展开该次精确输入、返回摘要和完整 JSON。回答范围按实际证据标注，不借用地图选中标签；**View on map** 才显式聚焦对应范围。关闭或 Escape 收起并保留内容，已打开的集成详情不被替换；关闭展示不取消已主动提交的请求。不建立调查派单或自动研究发布流程。
+- 底图失效时明确提示，仍保留真实市场数据与示意选择；不以静态截图/假城市代替 3D 服务。
+
+当前 WIP 已包含集成左侧详情、选择及真实建筑着色和相关回归；性能仍待修复与验收，未新增 HTTP 合同、数据、研究/发布能力或模型调用。材料/交互参考用户 `test1.png` 和 [Apple visionOS Tab bars](https://developer.apple.com/design/human-interface-guidelines/tab-bars)，使用 CSS blur、半透明、高光与阴影，不是原生 Apple Liquid Glass 或完整光学折射。前次 chat 的实际业务 `output` 扩展保留。旧 PPT/ZIP 未重新生成，旧截图不代表新界面；视觉与业务验收仍由用户确认。
 
 ## 用自己的账户启用 Agent
 
@@ -81,6 +109,8 @@ cd ..
 uv run python scripts/live_smoke.py  # 登录后真正执行 3 轮模型，实际工具与逐项检查
 # 另一终端已启动 Agent-enabled serve 后，可选地真正调用 2 轮模型：
 node scripts/live_ui.mjs             # 独立 Chromium；订阅模式、实际 UI、多轮和来源断言
+# 不消耗模型额度：已启动本项目 serve 后，截图并重放保存的真实 Run
+node scripts/capture_agent_ui.mjs    # 明确标记 replay；/api/chat 在发送给后端之前拦截
 ```
 
 业务 Module 可独立测试；合成缺失/冲突/零基数只在临时测试目录，不进入正式数据。`verify` 只重查白名单原文摘录，不发现最新报告或自动更新快照。来源字段、使用限制和地理缺口见 [`data/README.md`](data/README.md)；Interface 见 [`docs/contracts.md`](docs/contracts.md)。
@@ -101,4 +131,4 @@ uv run python scripts/package_delivery.py
 
 数据 Module 拥有来源/标准化/证据；Market Module 拥有定义与比较；Codex Adapter 独占 SDK/认证/线程/事件转换；界面只消费业务 JSON。未来其他运行时需要新增并验证 Adapter，不重写数值工具或把 SDK 对象传给 UI。架构决策见 `docs/adr/`，术语见 `GLOSSARY.md`。
 
-GitHub Issues 是唯一需求/triage/backlog 入口，PR 正常 review；默认五标签与中文约定见 `docs/agents/`。本地 `AGENTS.md` 按用户 setup 规则被忽略；没有启动 Ralph 或批量创建 backlog。新数据定义、依赖、合同、付费调用和发布/分享权限变更需先确认。
+GitHub Issues 是唯一需求/triage/backlog 入口，PR 正常 review；默认五标签与中文约定见 `docs/agents/`。`AGENTS.md` 是公开的项目初始化约定，已解除忽略以随源码保存；没有启动 Ralph。已有三个获用户批准的性能 Tickets，不自动新增或扩展 backlog。新数据定义、依赖、合同、付费调用和发布/分享权限变更需先确认。

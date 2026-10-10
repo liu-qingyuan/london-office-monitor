@@ -4,7 +4,7 @@
 
 已有测量把画布 resize 与 GPU buffer 分配列为优先调查方向，尚未证明具体根因或修复。问题不是“测试等得不够久”，也不能仅凭模块数量或一次测试通过判定架构和性能合格。
 
-本 spec 是已确认性能要求的父级 spec，关联既有交付 issue #1；不是可直接实现的 Ticket，明确不进入 Ralph backlog。现有实现已保存为 main 上的性能基线，性能验收通过前暂停新增地图／地区功能。
+本 spec 是已确认性能要求的父级 spec，关联既有交付 issue #1；不是可直接实现的 Ticket；本次获用户批准将既有三条子票原地转为 Ralph-ready，父 spec 本身不进入执行 backlog。现有实现已保存为 main 上的性能基线，性能验收通过前暂停新增地图／地区功能。
 
 ## Solution
 
@@ -282,7 +282,7 @@ classDiagram
 - 最近两项原始长场景的聚焦运行仍失败，相机约 49.2 秒、板块约 39.5 秒。完整流程、最小反馈循环和当前代码版本均须在实施阶段重新绑定并验证。
 - 一次生产构建的 SwiftShader profile 中，`_resizeCanvas` 累积 self time 约 16.7 秒，两处 `bufferData` 合计约 9 秒，`updateSelectedBuildings` 约 0.09 秒。这是该输入序列的采样结果，不是单次交互延迟、确定根因或硬件 GPU 用户验收。
 - 本地证据保留在 `artifacts/left-detail/cpu-profile-summary.json`、`cpu-profile.json`、`e2e.log` 与 `camera-navigation-native-parts.log`；原失败 traces 和截图保留。输入包含 1600×1000、真实底图、按顺序打开／关闭 Macro、Rents、Vacancy。没有新模型请求。
-- 原 WIP 所在 HEAD `9b1859ea1de0dba0cb4e3033da4b496459d80242` 不包含后来修改。用户现已批准在 main 提交／推送：相关实现与测试保存为代码基线 `52d205ad700a6940dfee015a21c2795a27d8d29c`，初始化文档随后单独保存。已知浏览器失败仍保留；Ralph 还需验证父子票共享的 Git 契约及 ready 状态，提交不代表性能验收或启动授权。
+- 原 WIP 所在 HEAD `9b1859ea1de0dba0cb4e3033da4b496459d80242` 不包含后来修改。用户现已批准在 main 提交／推送：相关实现与测试保存为代码基线 `52d205ad700a6940dfee015a21c2795a27d8d29c`，初始化文档随后单独保存。已知浏览器失败仍保留；用户现已批准将既有 #3／#4／#5 原地转为 Ralph-ready，按正文最后的 Git 契约冻结 main 基线；转换须验证 worktree、完整正文与 ready 状态，不代表性能验收或启动循环的授权。
 
 ### 文档与审查纪律
 
@@ -292,3 +292,9 @@ classDiagram
 - 八张图已通过 GitHub 官方 Mermaid renderer 实际解析／生成 SVG；复用本项目公开 issue 页面和独立浏览器，未安装新依赖或写入既有 issue。图与 spec 的验证不代表产品性能已达标。
 - GitHub Issues 是唯一 tracker；本地 spec 文档是正文镜像，不是另一份 Ticket／状态／依赖清单。三条已批准 Tickets 为 #3（热态交互）、#4（冷启动／降级）、#5（验证反馈），#5 依赖 #3、#4；局部 Gate 和最新 60 秒预算已发布。不重复创建 Tickets，实施或 Ralph 启动仍需明确授权。
 - 编码 Agent 默认具有完整开发工具权限，不继承应用市场 Agent 的六工具只读限制；当前任务的业务范围和新依赖／合同／付费／发布授权要求不因此扩大。初始化入口为根 `AGENTS.md` 与 `README.md`，已知失败和实际验收状态见 `docs/verification.md`。
+
+## Git
+
+- Branch: `main`
+- Base branch: `origin/main`
+- Base commit: `af77db4c7b55140f9c4a4ee3662f98f8fcc2cc4a`

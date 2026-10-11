@@ -5,8 +5,19 @@
 用户明确要求自动运行上述 CI，本轮允许为此整合必要的公开源码／测试／项目记录并提交推送 `main`；此前“不提交推送／不触发 CI”是上一阶段边界，不再阻止这次测试。公开仓库使用标准 GitHub runner，不新增付费服务、模型／Google 额度、托管应用或分享权限。暂存采用明确的44文件公开清单，排除 `.pi/`、凭据、`var/`、`artifacts/` 和报告原件；保留个人未跟踪配置，不读取其内容。来源发现与 Presentation 的已有实现／fixtures 作为完整测试快照一同保留，不另行改造。
 
 - 推送前复核：54项 Python＋TypeScript、wall2.65秒；三个 Feature staged 指纹一致、`git diff --cached --check` 通过，高置信凭据特征扫描无命中（不声称能识别所有秘密格式）。
-- 入口：[Portable runtime](https://github.com/liu-qingyuan/london-office-monitor/actions/workflows/portability.yml)，push 自动触发；macOS／Ubuntu／原生 Windows × Python3.12／3.13 共六组。运行 ID／逐组结果待实际执行后写入，不用配置存在或本机 GREEN 冒充远程结果。
-- 测试不读取用户 key、不登录个人 SDK、不调用真实 Google／模型；固定 runtime 仅 `--version`，应用服务器 `--no-agent`，SerpAPI 与 SDK 交互为明确 fixture，7项 UI smoke 不代替完整真实地图性能或实时模型验收。此前独立 Focused Closure 仍未完成，CI 不自动替代它。
+- **实际结果**：[run 38155388215](https://github.com/liu-qingyuan/london-office-monitor/actions/runs/38155388215)，push、提交 `a0c98a544a28674bbf41eec3ee2ba7364debcf25`，2026-10-11 16:25 UTC 起，六组 **success、6/6通过**。各组固定依赖安装、54项 Python（含原生并发 receipt、HTTP／MCP／SDK fixture、无认证 runtime 版本）、production build和7项 UI smoke均执行完成。无需平台修复／重跑、未删覆盖或放宽断言。完整 job/steps JSON、原始 logs及 watch 记录保存在 `var/runs/cross-platform/ci/`，公共执行证据以上述链接为准。
+
+| 原生 runner | Python | 54项 Python 耗时 | 7项 UI smoke 耗时 | 整个 job（含安装） |
+|---|---|---|---|---|
+| macos-latest | 3.12 | 41.594s | 约1.5min | 3m05s |
+| macos-latest | 3.13 | 39.654s | 约1.1min | 2m14s |
+| ubuntu-latest | 3.12 | 4.507s | 58.8s | 1m41s |
+| ubuntu-latest | 3.13 | 2.667s | 31.3s | 1m04s |
+| windows-latest | 3.12 | 15.351s | 31.7s | 5m14s |
+| windows-latest | 3.13 | 14.276s | 30.9s | 5m18s |
+
+这些是 GitHub 虚拟 runner 的实际命令时间，不是本机10／30／60秒或用户地图性能通过证据；本轮没有恢复暂缓的性能优化。
+- 测试不读取用户 key、不登录个人 SDK、不调用真实 Google／模型；固定 runtime 仅 `--version`，应用服务器 `--no-agent`，SerpAPI 与 SDK 交互为明确 fixture，7项 UI smoke 不代替完整真实地图性能或实时模型验收。此前独立 Focused Closure 仍未完成，CI 不自动替代它。Windows 硬链接／平台锁在本次 runner 文件系统实际通过，但不能推及所有文件系统／权限组合或架构；仍不承诺完整产品、实时市场或完整地图性能通过。Actions 有 Node20 action-runtime 迁移警告（GitHub 自动使用Node24、执行成功），Ubuntu label 将来迁移提醒，属于非阻断维护事项，本轮不扩大升级范围。
 
 ## 跨平台运行与后端凭据接入（2026-10-11，新验证）
 

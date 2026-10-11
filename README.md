@@ -40,11 +40,11 @@
 
 | 后端运行系统 | 实现与验收边界 |
 |---|---|
-| macOS | 已有本机验证；可复用已配置的专用 Keychain，也可用环境变量 |
-| Linux | 使用同一环境变量路径和 POSIX receipt 文件锁；原生 CI 验证见下方工作流，不借用 Mac 结果 |
-| Windows（原生 Python） | 使用环境变量、`.venv/Scripts/python.exe` 和 Windows receipt 文件锁；不需要 Mac、Bash 或 WSL。原生 CI 结果须单独确认 |
+| macOS | 本机及原生 CI 通过；可复用已配置的专用 Keychain，也可用环境变量 |
+| Linux | 原生 Ubuntu CI 通过；使用同一环境变量路径和 POSIX receipt 文件锁 |
+| Windows（原生 Python） | 原生 CI 通过；使用环境变量、`.venv/Scripts/python.exe` 和 Windows receipt 文件锁，不需要 Mac、Bash 或 WSL |
 
-[跨平台 CI](.github/workflows/portability.yml) 覆盖三系统与 Python 3.12／3.13，包含无认证的固定 SDK runtime 启动、业务／HTTP／MCP／预算竞争测试及 UI smoke。添加工作流不等于各系统已通过；最新实际执行与未验证项见 [`docs/verification.md`](docs/verification.md)。它不证明实时搜索／模型或跨硬件地图性能。以下 `uv` 安装／启动命令可用于 Bash 和 Windows PowerShell。
+[跨平台 CI](.github/workflows/portability.yml) 的[首轮原生执行](https://github.com/liu-qingyuan/london-office-monitor/actions/runs/38155388215) **6/6通过**（提交 `a0c98a5`）：三系统各覆盖 Python 3.12／3.13，每组54项 Python测试、production build和7项 UI smoke，包含无认证的固定 SDK runtime 启动、HTTP／MCP与预算竞争。实际范围与未验证项见 [`docs/verification.md`](docs/verification.md)；它不证明真实账户登录／搜索／模型、所有文件系统、完整地图或跨硬件性能，也不证明 GitHub 虚拟机达到本机 quick／focused 时限。以下 `uv` 安装／启动命令可用于 Bash 和 Windows PowerShell。
 
 ### 自动跨平台测试（CI）
 

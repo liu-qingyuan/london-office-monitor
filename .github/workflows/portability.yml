@@ -1,0 +1,64 @@
+name: Portable runtime
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline:
+    name: ${{ matrix.os }} / Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+        python: ['3.12', '3.13']
+    env:
+      PYTHONUTF8: '1'
+      OPENAI_API_KEY: ''
+      CODEX_API_KEY: ''
+      LONDON_OPENAI_API_KEY: ''
+      SERPAPI_API_KEY: ''
+      LONDON_DISCOVERY_BUDGET_FILE: ''
+      PLAYWRIGHT_BROWSERS_PATH: './.pw-browsers'
+      OFFICE_PRODUCTION: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install locked Python dependencies
+        run: |
+          python -m pip install uv==0.11.29
+          uv sync --frozen --python "${{ matrix.python }}"
+      - name: Install locked frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Native business, receipt concurrency, SDK version and fixture contracts
+        run: uv run python -m unittest discover -s tests -v
+      - name: Production build
+        working-directory: frontend
+        run: npm run build
+      - name: Install project Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: Real localhost API and UI smoke (no external search or model)
+        working-directory: frontend
+        run: npm run test:e2e -- tests/market.spec.ts tests/discovery.spec.ts -g "real API provides|real City values|explicit synthetic Python conflict|question suggestions|offline Agent errors|reading the real candidate pool|only explicit discovery"
+      - name: Keep failed smoke evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-${{ matrix.os }}-${{ matrix.python }}
+          path: artifacts/playwright-results/
+          if-no-files-found: ignore

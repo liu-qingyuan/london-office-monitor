@@ -1,8 +1,10 @@
 """Real local HTTP integration with the real Market Module; model access disabled."""
 import json
+import os
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 import unittest
 from urllib.error import HTTPError, URLError
@@ -17,7 +19,10 @@ class HTTPTests(unittest.TestCase):
             sock.bind(("127.0.0.1", 0))
             port = sock.getsockname()[1]
         cls.url = f"http://127.0.0.1:{port}"
-        cls.server = subprocess.Popen([sys.executable, "-m", "london_office", "serve", "--port", str(port), "--no-agent"], cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        cls.discovery_directory = tempfile.TemporaryDirectory()
+        cls.server = subprocess.Popen([sys.executable, "-m", "london_office", "serve", "--port", str(port), "--no-agent"], cwd=ROOT,
+            env={**os.environ, "LONDON_DISCOVERY_DIR": cls.discovery_directory.name},
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for _ in range(100):
             if cls.server.poll() is not None:
                 raise RuntimeError("Dedicated integration server failed to start")
@@ -34,6 +39,7 @@ class HTTPTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.server.terminate()
         cls.server.wait(timeout=5)
+        cls.discovery_directory.cleanup()
 
     def request(self, path, body=None, headers=None):
         data = json.dumps(body).encode() if body is not None else None
@@ -54,6 +60,17 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual([row["value"] for row in market["observations"]], [105.26, 166.61, None, None])
         self.assertEqual(market["comparisons"][1]["change_value"], 5.78)
 
+    def test_discovery_inventory_is_readonly_and_separate_from_market_facts(self):
+        code, pool = self.request("/api/discovery")
+        self.assertEqual(code, 200)
+        self.assertEqual(pool["data_kind"], "source_candidates")
+        self.assertEqual({topic["id"] for topic in pool["topics"]},
+            {"rents", "vacancy", "leasing", "supply", "submarkets", "macro", "demand", "news"})
+        self.assertEqual(pool["candidates"], [])
+        self.assertTrue(all(topic["status"] == "not_searched" for topic in pool["topics"]))
+        self.assertNotIn("observations", pool)
+        self.assertNotIn("answer", pool)
+
     def test_unknown_period_and_extra_request_fields_are_explicit_errors(self):
         code, error = self.request("/api/market?period=2026-Q3")
         self.assertEqual(code, 422)
@@ -68,6 +85,18 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(code, 503)
         self.assertEqual(result["error"]["code"], "agent_disabled")
         self.assertNotIn("answer", result)
+
+    def test_explicit_discovery_does_not_bypass_agent_or_origin_permissions(self):
+        body = {"question": "Find current London office source reports", "topic_ids": ["rents", "vacancy"]}
+        code, result = self.request("/api/discovery", body)
+        self.assertEqual(code, 503)
+        self.assertEqual(result["error"]["code"], "agent_disabled")
+        code, result = self.request("/api/discovery", body, {"Origin": "https://example.com"})
+        self.assertEqual(code, 403)
+        self.assertEqual(result["error"]["code"], "origin_not_allowed")
+        code, result = self.request("/api/discovery", {**body, "api_key": "TEST-ONLY"})
+        self.assertEqual(code, 422)
+        self.assertNotIn("TEST-ONLY", json.dumps(result))
 
     def test_foreign_browser_origin_cannot_spend_model_turns(self):
         code, result = self.request("/api/chat", {"question":"City rent?"}, {"Origin":"https://example.com"})

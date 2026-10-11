@@ -13,6 +13,8 @@ class Settings:
     auth_mode: str = "subscription"
     codex_home: Path = Path.home() / ".local/share/london-office-monitor/codex"
     run_dir: Path = ROOT / "var/runs"
+    discovery_dir: Path = ROOT / "var/discovery"
+    discovery_budget_file: Path | None = None
     max_turns: int = 10
     turn_timeout_s: int = 120
     agent_enabled: bool = True
@@ -23,6 +25,8 @@ class Settings:
             model=os.environ.get("LONDON_MODEL", "gpt-6.1-sol"),
             auth_mode=os.environ.get("LONDON_AUTH_MODE", "subscription"),
             codex_home=Path(os.environ.get("LONDON_CODEX_HOME", str(cls.codex_home))),
+            discovery_dir=Path(os.environ.get("LONDON_DISCOVERY_DIR", str(cls.discovery_dir))),
+            discovery_budget_file=Path(os.environ["LONDON_DISCOVERY_BUDGET_FILE"]) if os.environ.get("LONDON_DISCOVERY_BUDGET_FILE") else None,
             max_turns=int(os.environ.get("LONDON_MAX_TURNS", "10")),
             turn_timeout_s=int(os.environ.get("LONDON_TURN_TIMEOUT", "120")),
         )

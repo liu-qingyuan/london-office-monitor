@@ -1,5 +1,46 @@
 # 执行验证记录
 
+## 自动执行跨平台 CI（2026-10-11，用户后续授权）
+
+用户明确要求自动运行上述 CI，本轮允许为此整合必要的公开源码／测试／项目记录并提交推送 `main`；此前“不提交推送／不触发 CI”是上一阶段边界，不再阻止这次测试。公开仓库使用标准 GitHub runner，不新增付费服务、模型／Google 额度、托管应用或分享权限。暂存采用明确的44文件公开清单，排除 `.pi/`、凭据、`var/`、`artifacts/` 和报告原件；保留个人未跟踪配置，不读取其内容。来源发现与 Presentation 的已有实现／fixtures 作为完整测试快照一同保留，不另行改造。
+
+- 推送前复核：54项 Python＋TypeScript、wall2.65秒；三个 Feature staged 指纹一致、`git diff --cached --check` 通过，高置信凭据特征扫描无命中（不声称能识别所有秘密格式）。
+- 入口：[Portable runtime](https://github.com/liu-qingyuan/london-office-monitor/actions/workflows/portability.yml)，push 自动触发；macOS／Ubuntu／原生 Windows × Python3.12／3.13 共六组。运行 ID／逐组结果待实际执行后写入，不用配置存在或本机 GREEN 冒充远程结果。
+- 测试不读取用户 key、不登录个人 SDK、不调用真实 Google／模型；固定 runtime 仅 `--version`，应用服务器 `--no-agent`，SerpAPI 与 SDK 交互为明确 fixture，7项 UI smoke 不代替完整真实地图性能或实时模型验收。此前独立 Focused Closure 仍未完成，CI 不自动替代它。
+
+## 跨平台运行与后端凭据接入（2026-10-11，新验证）
+
+- 用户明确授权将软件适配 macOS／Linux／原生 Windows 并补测试。本轮复用既有发现／Market／Codex Adapter，不增依赖、搜索／模型额度、正式指标或发布权限，不提交推送／触发 CI，不恢复暂缓的地图性能任务。起始 HEAD 与已有 WIP 的公开源码快照保存在 `var/runs/cross-platform/baseline/`；只审查本次增量，不接管其他未提交内容。局部跨进程调用变化的8张当前／目标 Mermaid 图与取舍见 [ADR 0003](adr/0003-portable-discovery-backend.md)。
+- **实现**：取消启动时 Unix-only 导入；receipt 在 POSIX／Windows 分别使用真实平台文件锁，保持授权、计数、单请求尝试、互斥和原子替换；JSON 使用 UTF-8。CLI／父后端可用 `SERPAPI_API_KEY`，只在 macOS 复用既有专用 Keychain。网页发现的实际 key 留在父后端，MCP 使用请求级认证 loopback JSON 桥接；SDK／MCP key 环境仍为空，不暴露 key 读取操作或修改预算／topic／context 的能力。网络使用标准／显式代理或直连，取消固定7897。原 npm 检查改由 Node 执行，共用平台 venv 路径，不需要 Bash；原10／30／60秒与退出余量保留。
+- **离线业务与启动**：`cd frontend && npm run check:quick` 本机实际 **54项 Python＋TypeScript 通过，wall2.11秒**。包括真实 HTTP／CLI／MCP 子进程、真实本地桥接配合 fixture SerpAPI／SDK、4个独立 Python 进程竞争同一剩余额度、错误 scope／无效 capability／重复请求、key／短期 capability 不进入应用配置证据与业务输出、完成及 SDK thread 启动失败后的监听清理。真实固定 Codex CLI `--version` 启动，仅验证0.162.0可执行，不认证、不读个人配置、不调用模型。额外配置回归 guard 捕获并阻止三个浏览器测试文件的旧 Unix-only Python 启动路径；这个静态检查不是 native Windows 证明。Windows byte-lock／缺 Unix 模块、macOS Keychain 返回值属于明确的模拟／fixture，不是读取真实 key 或原生 Windows 结果。
+- **真实 UI／地图融合**：本机专用 production Python 8018＋项目 Chromium，无 Agent／搜索调用。`check:focused -- tests/market.spec.ts tests/discovery.spec.ts -g 'real API provides|real City values|question suggestions|offline Agent errors|reading the real candidate pool|only explicit discovery'` **6项通过、wall13.88秒**，AI 筛选 DTO 为 fixture，真实候选池仅只读。`OFFICE_USER_RENDERER=1 ... tests/left-detail.spec.ts -g 'buildings and labels' --workers 1` 修复3处遗留像素解码启动路径后，**真实 Metal 地图1项通过、wall14.66秒**，保留真实建筑／标签、选中与恢复、genuine missing；1600热态聚焦1项 **wall12.45秒**、1600冷启动聚焦1项 **wall10.54秒**通过，原 crop／amber 像素谓词、100ms／1000ms及2s／10s断言不变。浏览器 User-Agent 的 Windows 字样来自 Playwright 的设备预设，实际 host／renderer 为 Mac／Apple M5 Pro Metal，不作 native Windows 证据。synthetic Python conflict 的平台 Python 路径 **1项通过、wall9.31秒**，明确合成快照、未写入正式数据。不是一次完整35项地图回归，也不是跨硬件／性能阶段重新验收；旧 SwiftShader RED 保留。
+- **原生平台矩阵**：新增 `.github/workflows/portability.yml`，macOS／Ubuntu／Windows × Python3.12／3.13，锁定安装、原生业务／HTTP／MCP／预算竞争、无认证 runtime 版本、build 和7项 UI smoke（其中1项 synthetic）。工作流尚未提交运行，Windows／Linux 产品状态为 **待实际执行**。本机没有可用的 Docker server，因此未在本机运行 Linux 容器；没有用模拟或 Mac 的 GREEN 冒充 native Linux／Windows 验收。
+- **实时模型／SerpAPI**：本轮 **0次真实搜索／模型调用**，没有读取实际钥匙串内容、复制个人 Codex 配置、重开 receipt 或索取／写入 key。已有 Free Plan／价格／余额核验只是历史记录，不作未来额度保证；本次不消耗它。
+- **RED 与证据**：`var/runs/cross-platform/tests/` 保存缺 fcntl 启动、Windows锁、非 Mac 缺 key、固定代理、网页后端桥接缺失与无 Bash 检查的 RED→GREEN，以及当前命令日志。首次无 Bash fixture 错把 npm 的基本 shell 也移除，已单独保留并修正，不当作产品 RED；修正后实际复现 `bash: command not found`。首次新 `.mjs` 引入的 TS7016 已补对应声明并重验。浏览器原始报告／trace 在 `artifacts/checks/20261011T145729387Z-43997/`、`20261011T145941789Z-44331/`、`20261011T150038017Z-44492/`。这些本次材料不包含真实凭据。阻断遗漏的配置 guard RED→GREEN 及修复后执行在 `tests/16-all-browser-launchers-red.log`、`17-all-browser-launchers-green.log`、`18-fixed-roof-path.log`、`19-fixed-hot-path.log`、`20-fixed-cold-path.log`；最新真实地图材料分别在 `artifacts/checks/20261011T153701625Z-51475/`、`20261011T153716389Z-51567/`、`20261011T153728945Z-51664/`。
+- **Review／收口边界**：以起始公开 WIP 快照作 fixed point，本次22文件增量范围与记录在 `var/runs/cross-platform/review/`。Standards 独立初审 accepted、无阻断；Spec 独立初审唯一 High 为地图测试残留3处 Unix 路径、方向 wrong。主流程已用同一平台入口作最小修复并保留断言、覆盖和预算，通过上述 RED→GREEN／真实定向执行。两个原 reviewer 的 resume 均返回 Agent not found；达到四次 review 调用上限，不另启替代 reviewer，**独立 Focused Closure 未完成，clean 未执行**，不称双轴最终验收通过。Feature fingerprint 仅表明文档与当前源码一致，不是这个缺失 Closure 的替代。
+
+## 显式来源发现增量（2026-10-11，新验证）
+
+- 用户授权小步实施，先资料与 AI 工具、空间精度后置；不走新 Spec／Tickets／Ralph。复用 CodexAdapter／认证与现有 Agent 面板，增加独立候选库存／发现 profile；不改正式 snapshot／GeoJSON、不引入数据库或自动发布。原市场六工具与 Web Search disabled 保留，发现 thread 不用于普通会话。
+- **离线业务**：RED→GREEN 覆盖只读 HTTP 库存、完整 URL／出现存储、预算耗尽前阻断凭据／网络、key echo 不保留、隔离 SDK profile、引用绑定、启动失败保留以及跨域／extra fields 拒绝。原 `check:quick` 初次通过35项＋类型、wall1秒；首轮完整入口通过38项；收尾修复后最新通过 **42项 Python＋类型／production build**（含同期 Presentation 测试），快速入口wall2秒、完整入口wall58秒，没有模型调用。
+- **真实地图融合／端到端**：`OFFICE_USER_RENDERER=1 npm run check:full` 首次 **35/35 浏览器检查通过、命令wall57秒**，证据 `artifacts/checks/20261011T130726-22898/`；收尾补丁后再经原完整入口35/35通过、wall58秒，日志 `artifacts/discovery/20261011-source-first/closure-guards/full-final.log`；Apple M5 Pro／ANGLE Metal、正常动画，既有真实背景、拾取／颜色、冷热态、缺失／错误与 UI scope 保留。包含真实候选库存读取与合成 AI 筛选 DTO 区分，不把后者当实时模型。SwiftShader整套本轮未重做，历史RED／未执行及用户暂缓决定保留。
+- **真实双通路／模型 UI**：`live-source-1` 实际约29秒、HTTP200，单个发现轮真实调用 `google_search_sources` 和 native Web Search；Google backend metadata完成，原生SDK可见1个搜索项、2条query、30次URL出现，底层HTTP次数未知。短ref绑定thread／turn／工具item，模型选中三条机构入口可精确关联本轮工具metadata；不是模型编造URL。真实地图背景上的截图已检查。证据：`artifacts/discovery/20261011-source-first/live-source-1/{input,http-response,execution}.json` 与 `real-source-ui.png`；typed journal在 `var/runs/discovery/native-ac4c183067d842a899eb2d84c901b133/`。
+- **普通市场模型验证**：`live-market-1` 实际约16秒、HTTP200，真实 `compare_periods` 得到 City prime achieved rent 98.6→105.26 £/sq ft、Python变化6.75%，没有发现工具进入普通会话。输入／HTTP响应／执行及截图在同目录 `live-market-1/`；不是fixture／replay，也不宣称更多SDK／语义案例全覆盖。
+- **采集结果与限制**：六题真实Google批量metadata采集约54.22秒，196次URL出现／145个不同字符串，涵盖八个检索意图但含偏题、旧资料与URL变体。应用双通路后完整库存为 **187个URL字符串／247次出现**，AI筛选的Savills／CBRE／Carter Jonas仅为未核验资料入口，不是已获准全文、真实最新指标或验证后的统计覆盖。搜索不把选中City写成地理覆盖，也没有任意地点定位／楼级行情。完整Google响应、输入与失败阶段在 `var/discovery/evidence/`；未保存原始account body／邮箱或key。
+- **收尾只读审查／修复**：独立审查复现三个问题：URL编码key可写入rawJSON、证据目录创建失败时活动发现会话未清理、空原生结果被标成metadata已收集。四个新增离线公开Seam回归得到3个FAIL＋1个ERROR后修复：先解析并检查JSON／URL编码key再保存；证据setup纳入清理边界、返回安全evidence_unavailable并保存not_executed记录；零候选run／topic分别表示completed_no_candidates／metadata_unavailable，完成搜索不冒充抓到了来源。42项快速／完整及35项硬件浏览器通过。原RED和GREEN记录在 `closure-guards/`。独立审查只读、无外部调用；本批真实双通路／市场轮发生在补丁前，补丁后未绕过Google／market子额度追加live，本记录不把离线结果冒充最新网络执行。
+- **预算／失败保留**：共享receipt现为 **Google8/8、Codex2/3**（native1＋market1），没有自动重试、续约或付费fallback；保留一轮native，不自行耗尽。Google现场新搜索需另行获准预算。前两次浏览器入口检查因尚未实现控件而在总截止中断，诊断保留实际输入并显示浏览器启动约221ms、等待缺失控件；随后显式可见性断言取得两项真实RED，再实现后6秒聚焦GREEN，未放宽总timeout或删除地图。证据 `artifacts/checks/20261011T123009-7483/`、`20261011T123204-9279/`、`20261011T123345-9655/`、`20261011T123728-12367/` 及 `artifacts/discovery/20261011-source-first/browser-diagnostic/focused-launch.log`。历史独立 Closure、用户最终业务／视觉验收不由本增量自动关闭。
+
+
+## Presentation 目录收拢（2026-10-11，新验证）
+
+- 本轮任务是提交前收拢演示实现并同步 feature 记录。评测要求为可运行 Python Agent PoC＋面向业务团队的 3–6 页 slides；保留五页英文内容、版式、依赖、参数和产物路径。生成／打印实现归入 `presentation/`，原 `scripts/` 命令为兼容入口；ZIP 打包职责保持原样。没有改动应用、地图、业务数据、模型权限或其他搜索 WIP。
+- 局部 Mermaid Gate：不需要图。仅将既有 Presentation Implementation 归位，公开 CLI、Market Interface、依赖方向、生成／打印顺序及状态语义均保持不变，没有引入新 Seam 或通用渲染框架。
+- TDD：首先运行新增的入口／五页一致性测试，因 `presentation/build_slides.py` 尚不存在得到真实 RED；迁移后三个聚焦测试通过，覆盖实际新旧 CLI、五页内容／讲稿、明确标注的截图与状态 fixture、错误输入不产生交付文件。
+- **离线业务检查**：`cd frontend && npm run check:quick` 实际通过 **38 项 Python 测试＋TypeScript 检查**，输出 `quick wall: 2s`、退出 0，日志在 `artifacts/presentation-consolidation-20261011/quick-check.log`。fixture 中的 Verified 标签仅用于测试展示输入，不是产品／模型验收。
+- **演示生成／打印**：真实执行原命令和新命令，专用 Chromium 打印；PPTX、HTML、PDF 均五页。baseline／modified／rollback 独立副本的 HTML hash、PPTX 文本／讲稿、PDF 文本及五张 slide PNG hash 全部一致；五页打印截图已逐页检查。原始 SHA-256、完整命令／输入／stdout／stderr／退出状态、差异和可执行回滚保存在 `artifacts/presentation-consolidation-20261011/`。回滚只在另一副本测试，工作区保留迁移后的实现；既有经审阅 PPT／PDF／截图没有被本轮测试覆盖。
+- **真实地图融合／端到端**：本轮未新执行。**实时模型实测**：本轮未调用。演示打印、fixture、类型检查和历史 GPU 记录均不替代这些验收；本轮没有重生成最终提交 ZIP 或更改分享权限。
+- 对应当前事实与受管路径见 `docs/features/presentation.md`，操作导航见 `presentation/README.md`。数值解释文案的进一步参数化及跨项目工具提取留待提交后的独立改进。
+
 **工程样机；用户已认可当前性能结果，本阶段收口，剩余优化暂缓。** 阶段认可不意味着 SwiftShader 完整回归、新模型实测、全部产品验收或 Issue #1 原独立 Closure 通过。以下保留各轮原执行结果和失败；历史状态／60秒目标以本节最新决定为准。数据为 Savills 2024 / 2025 年末快照，不是实时行情。
 
 来源：[Issue #1](https://github.com/liu-qingyuan/london-office-monitor/issues/1)、[性能 Spec #2](https://github.com/liu-qingyuan/london-office-monitor/issues/2)、`docs/spec.md`、`docs/contracts.md`。历史首版审查 fixed point 为 `d1cf15b`，不是当前 WIP 的固定基线；记录日期 2026-10-10 Asia/Shanghai，执行文件使用 UTC。

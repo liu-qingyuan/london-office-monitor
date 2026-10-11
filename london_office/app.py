@@ -14,6 +14,7 @@ from .data import ROOT
 from .market import Market
 from .runtime import AgentError, CodexAdapter
 from .settings import Settings
+from .source_pool import SourcePool, TOPICS
 
 
 class MapContext(BaseModel):
@@ -28,6 +29,24 @@ class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     session_id: str | None = Field(default=None, max_length=100)
     context: MapContext | None = None
+
+
+class DiscoveryContext(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    area_id: str | None = None
+
+
+class DiscoveryRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    question: str = Field(min_length=1, max_length=2000)
+    topic_ids: list[str] = Field(default_factory=lambda: list(TOPICS), min_length=1, max_length=8)
+    context: DiscoveryContext | None = None
+
+
+def _require_local_origin(request: Request):
+    origin = request.headers.get("origin")
+    if origin and urlparse(origin).hostname not in {"localhost", "127.0.0.1"}:
+        raise AgentError("origin_not_allowed", "Agent requests must originate from the local application.")
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -48,7 +67,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         statuses = {"unknown_session":404, "session_busy":409, "turn_budget_exhausted":429,
             "turn_timeout":504, "invalid_question":422, "invalid_context":422,
             "invalid_answer":502, "invalid_citation":502, "unsupported_number":502,
-            "no_business_tool":502, "missing_citation":502, "no_selected_evidence":502}
+            "no_business_tool":502, "missing_citation":502, "no_selected_evidence":502,
+            "origin_not_allowed":403, "model_budget_exhausted":429, "discovery_permission_exceeded":502}
         return JSONResponse({"status":"error", "error":{"code":error.code,"message":error.message}}, status_code=statuses.get(error.code, 503))
 
     @app.exception_handler(RequestValidationError)
@@ -57,8 +77,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/catalog")
     def catalog():
-        return {**market.catalog(), "agent":{"runtime":"codex-python-sdk",
-            "enabled":settings.agent_enabled,"model":settings.model,"auth_mode":settings.auth_mode}}
+        return {**market.catalog(), "discovery_topics": [{"id": key, "label": label} for key, label in TOPICS.items()], "agent":{"runtime":"codex-python-sdk",
+            "enabled":settings.agent_enabled,"model":settings.model,"auth_mode":settings.auth_mode,
+            "discovery_configured": settings.discovery_budget_file is not None}}
 
     @app.get("/api/market")
     def market_query(metric: str = "prime_rent", period: str = "2025-YE", area: str | None = None):
@@ -67,11 +88,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except ValueError as error:
             return JSONResponse({"status":"error", "error":{"code":"invalid_market_query","message":str(error)}}, status_code=422)
 
+    @app.get("/api/discovery")
+    def discovery_inventory():
+        return SourcePool(settings.discovery_dir).view()
+
+    @app.post("/api/discovery")
+    async def discover(body: DiscoveryRequest, request: Request):
+        _require_local_origin(request)
+        context = body.context.model_dump(exclude_none=True) if body.context else None
+        return await asyncio.to_thread(adapter.discover, body.question, topic_ids=body.topic_ids, context=context)
+
     @app.post("/api/chat")
     async def chat(body: ChatRequest, request: Request):
-        origin = request.headers.get("origin")
-        if origin and urlparse(origin).hostname not in {"localhost", "127.0.0.1"}:
-            return JSONResponse({"status":"error", "error":{"code":"origin_not_allowed","message":"Agent requests must originate from the local application."}}, status_code=403)
+        _require_local_origin(request)
         context = body.context.model_dump(exclude_none=True) if body.context else None
         return await asyncio.to_thread(adapter.ask, body.question, session_id=body.session_id, context=context)
 

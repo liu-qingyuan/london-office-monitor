@@ -1,6 +1,7 @@
 import {test,expect,type Page} from '@playwright/test';
 import {mkdir,writeFile} from 'node:fs/promises';
 import {execFileSync} from 'node:child_process';
+import {projectRoot,pythonExecutable} from '../scripts/python.mjs';
 
 const state = (page: Page) => page.evaluate(()=>window.__officeMapDebug!.state());
 const artifactDir = process.env.OFFICE_EVIDENCE_DIR ? `${process.env.OFFICE_EVIDENCE_DIR}/cold` : '../artifacts/ticket-4';
@@ -239,9 +240,9 @@ for (const viewport of [{width:1600,height:1000},{width:390,height:844}]) {
             const p = innerWidth<760 ? {x:box.width/2,y:box.height/2} : window.__officeMapDebug!.project([-.089,51.516])!;
             return [Math.round(box.x+p.x)-70,Math.round(box.y+p.y)+35];
           });
-          const amber = Number(execFileSync('../.venv/bin/python',['-c',
+          const amber = Number(execFileSync(pythonExecutable(),['-c',
             'import io,sys; from PIL import Image; im=Image.open(io.BytesIO(sys.stdin.buffer.read())).convert("RGB"); x,y=map(int,sys.argv[1:]); p=im.crop((x,y,x+140,y+90)).tobytes(); print(sum(r>=180 and 115<=g<=230 and b<=130 for r,g,b in zip(p[0::3],p[1::3],p[2::3])))',
-            ...roof.map(String)],{input:explored}).toString());
+            ...roof.map(String)],{input:explored,cwd:projectRoot,env:{...process.env,PYTHONUTF8:'1'}}).toString('utf8'));
           samples.roofAmberPixels = amber;
           expect(amber).toBeGreaterThan(100);
           samples.meetsUserColdBudgets = Number(samples.businessPresentedUpperMs)<=2000 && Number(samples.firstMapPresentedUpperMs)<=10000 && Number(samples.explorablePresentedUpperMs)<=10000;

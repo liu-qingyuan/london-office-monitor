@@ -2,6 +2,7 @@ import {test,expect,type Page} from '@playwright/test';
 import type {Catalog,Market} from '../src/types';
 import {mkdir,writeFile} from 'node:fs/promises';
 import {execFileSync} from 'node:child_process';
+import {projectRoot,pythonExecutable} from '../scripts/python.mjs';
 
 // Observe real canvas allocations without changing the renderer or injecting a
 // selection. Assigning an unchanged width/height still clears the drawing buffer.
@@ -101,10 +102,10 @@ async function amberPixelsNear(page: Page,center: [number,number],region = {dx:-
   // As in the hot/cold samples, decode outside the application GPU process.
   // The crop and amber predicate are identical; no extra 2D canvas allocations
   // can contaminate this selection or the next test's renderer.
-  return Number(execFileSync('../.venv/bin/python',['-c',
+  return Number(execFileSync(pythonExecutable(),['-c',
     'import io,sys; from PIL import Image; im=Image.open(io.BytesIO(sys.stdin.buffer.read())).convert("RGB"); x,y,w,h=map(int,sys.argv[1:]); w,h=min(w,im.width),min(h,im.height); x,y=max(0,min(im.width-w,x)),max(0,min(im.height-h,y)); p=im.crop((x,y,x+w,y+h)).tobytes(); print(sum(r>=180 and 115<=g<=230 and b<=130 for r,g,b in zip(p[0::3],p[1::3],p[2::3])))',
     String(Math.round(point.x)+region.dx),String(Math.round(point.y)+region.dy),String(region.width),String(region.height)
-  ],{input:png}).toString());
+  ],{input:png,cwd:projectRoot,env:{...process.env,PYTHONUTF8:'1'}}).toString('utf8'));
 }
 
 // Chromium Event Timing includes input queueing and the next presented frame.
@@ -203,9 +204,9 @@ for (const viewport of [{width:1600,height:1000},{width:390,height:844}]) {
           });
           // Decode outside the application browser. Repeated 2D bitmap/GPU
           // allocations inside it contaminated the next input's presentation.
-          const amber = Number(execFileSync('../.venv/bin/python',['-c',
+          const amber = Number(execFileSync(pythonExecutable(),['-c',
             'import io,sys; from PIL import Image; im=Image.open(io.BytesIO(sys.stdin.buffer.read())).convert("RGB"); x,y=map(int,sys.argv[1:]); p=im.crop((x,y,x+140,y+90)).tobytes(); print(sum(r>=180 and 115<=g<=230 and b<=130 for r,g,b in zip(p[0::3],p[1::3],p[2::3])))',
-            ...roof.map(String)],{input:png}).toString());
+            ...roof.map(String)],{input:png,cwd:projectRoot,env:{...process.env,PYTHONUTF8:'1'}}).toString('utf8'));
           const tilesRequested = tileRequests.slice(tileStart);
           samples.push({kind,attempt,feedbackUpperMs:timing.feedbackUpperMs,completeUpperMs:timing.completeUpperMs,amber,tilesRequested});
           await testInfo.attach(`${kind}-${attempt}`,{body:png,contentType:'image/png'});

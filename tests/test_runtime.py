@@ -1,5 +1,6 @@
 """Offline runtime-contract tests: no authentication or model calls."""
 import json
+from pathlib import Path
 import unittest
 from unittest.mock import patch
 from london_office.data import ROOT
@@ -10,11 +11,12 @@ from london_office.tools import BusinessTools
 
 class RuntimeTests(unittest.TestCase):
     def test_subscription_explicitly_clears_inherited_key_environment(self):
-        with patch.dict("os.environ", {"OPENAI_API_KEY":"TEST-ONLY", "CODEX_API_KEY":"TEST-ONLY"}):
+        with patch.dict("os.environ", {"OPENAI_API_KEY":"TEST-ONLY", "CODEX_API_KEY":"TEST-ONLY", "SERPAPI_API_KEY":"GOOGLE-TEST-ONLY"}):
             config = sdk_config(Settings())
         self.assertEqual(config.env["OPENAI_API_KEY"], "")
         self.assertEqual(config.env["CODEX_API_KEY"], "")
-        self.assertNotIn(".codex", config.env["CODEX_HOME"].split("/"))
+        self.assertEqual(config.env["SERPAPI_API_KEY"], "")
+        self.assertNotIn(".codex", Path(config.env["CODEX_HOME"]).parts)
         for feature in ['shell_tool', 'multi_agent', 'multi_agent_v2', 'view_image', 'browser_use', 'computer_use', 'js_repl', 'code_mode', 'apps', 'plugins', 'memories', 'memory_tool']:
             self.assertIn(f'features.{feature}=false', config.config_overrides)
         self.assertIn('skills={include_instructions=false,bundled={enabled=false}}', config.config_overrides)
@@ -72,7 +74,7 @@ class RuntimeTests(unittest.TestCase):
         self.assertEqual(result["facts"][0]["area_id"],"city")
 
     def test_recorded_user_run_keeps_city_evidence_separate_from_canary_map_selection(self):
-        fixture = json.loads((ROOT / "frontend/tests/fixtures/city-rent-recorded-run.json").read_text())
+        fixture = json.loads((ROOT / "frontend/tests/fixtures/city-rent-recorded-run.json").read_text(encoding="utf-8"))
         expected = fixture["response"]
         payload = {"answer":expected["answer"], "fact_ids":[f["id"] for f in expected["facts"]],
             "calculation_ids":[c["id"] for c in expected["calculations"]],

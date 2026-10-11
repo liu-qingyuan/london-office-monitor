@@ -2,6 +2,7 @@ import {test, expect} from '@playwright/test';
 import {openSection} from './navigation';
 import {mkdir} from 'node:fs/promises';
 import {execFileSync} from 'node:child_process';
+import {projectRoot, pythonExecutable} from '../scripts/python.mjs';
 import type {Catalog, Market} from '../src/types';
 
 const query = (metric = 'prime_rent', period = '2025-YE', area?: string) => {
@@ -125,7 +126,7 @@ test('unavailable external background preserves real data and deck selection geo
 test('explicit synthetic Python conflict stays distinct from missing, API errors and zero values',async({page},testInfo)=>{
   // Temporary synthetic snapshot at the existing Market Seam; never installed
   // as production data, a model response, or normal-map acceptance.
-  const fixture = JSON.parse(execFileSync('../.venv/bin/python',['-c',`
+  const fixture = JSON.parse(execFileSync(pythonExecutable(),['-c',`
 import json, tempfile
 from pathlib import Path
 from london_office.data import ROOT
@@ -140,7 +141,7 @@ with tempfile.TemporaryDirectory() as tmp:
     path.write_text(json.dumps(doc))
     market = Market(path)
     print(json.dumps({period: market.query(metric="prime_rent", period=period) for period in ["2024-YE", "2025-YE"]}))
-`]).toString()) as Record<string,Market>;
+`],{cwd:projectRoot,env:{...process.env,PYTHONUTF8:'1'}}).toString('utf8')) as Record<string,Market>;
   await testInfo.attach('synthetic-conflict-input',{body:JSON.stringify(fixture),contentType:'application/json'});
   await page.route('**/api/market?*',route=>route.fulfill({json:fixture[new URL(route.request().url()).searchParams.get('period')!]}));
   await page.route('https://tiles.openfreemap.org/**',route=>route.abort());

@@ -1,12 +1,13 @@
-"""Bounded local MCP stdio Adapter for the six explicitly registered Python tools.
+"""Local MCP stdio Adapter: six market tools OR explicit Google discovery.
 
-No SDK imports, shell, arbitrary file access, scraping URLs or personal integrations.
+Default profile unchanged. No SDK imports, model shell or arbitrary URL fetching.
 stdout is JSON-RPC only. Each attempted tool call records a local evidence event.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -60,8 +61,30 @@ class MCPServer:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--trace", type=Path)
+    parser.add_argument("--discovery-bridge", action="store_true", help="Application discovery; parent-owned bounded loopback search")
+    parser.add_argument("--discovery-budget", type=Path, help="Explicit standalone discovery profile; existing consent receipt only")
+    parser.add_argument("--discovery-request", help="Host-owned request ID, not a model tool parameter")
+    parser.add_argument("--topic", action="append")
+    parser.add_argument("--area-context", choices=["city", "west_end", "canary_wharf", "midtown_fringe"])
     args = parser.parse_args()
-    server = MCPServer(trace=args.trace)
+    tools = None
+    if args.discovery_bridge:
+        if args.discovery_budget or args.topic or args.area_context or args.discovery_request:
+            parser.error("Parent-owned discovery scope cannot be overridden by the MCP client")
+        from .discovery_bridge import GoogleBridgeClient
+        tools = GoogleBridgeClient(os.environ.get("LONDON_GOOGLE_BRIDGE_URL", ""),
+            os.environ.get("LONDON_GOOGLE_BRIDGE_TOKEN", ""))
+    elif args.discovery_budget:
+        from .discovery import GoogleDiscovery, DiscoveryTools
+        from .source_pool import SourcePool, TOPICS
+        from .settings import Settings
+        topics = args.topic or list(TOPICS)
+        if any(topic not in TOPICS for topic in topics): parser.error("Unknown discovery topic")
+        context = {"area_id": args.area_context} if args.area_context else None
+        tools = DiscoveryTools(GoogleDiscovery(SourcePool(Settings.from_env().discovery_dir), args.discovery_budget, request_id=args.discovery_request), topic_ids=topics, context=context)
+    elif args.topic or args.area_context or args.discovery_request:
+        parser.error("Discovery topic/context requires the explicit discovery profile and budget")
+    server = MCPServer(tools=tools, trace=args.trace)
     for line in sys.stdin:
         try:
             if len(line) > 100_000:

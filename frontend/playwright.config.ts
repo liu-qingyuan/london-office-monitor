@@ -1,4 +1,5 @@
 import {defineConfig, devices} from '@playwright/test';
+import {projectRoot, pythonExecutable} from './scripts/python.mjs';
 
 // Test only this project's dedicated servers and Playwright-managed Chromium.
 // A port collision fails instead of attaching to somebody else's process.
@@ -29,7 +30,7 @@ export default defineConfig({
     launchOptions: {args: userRenderer ? ['--enable-webgl'] : ['--enable-webgl', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader']}
   },
   webServer: [
-    {command: 'cd .. && .venv/bin/python -m london_office serve --port 8018 --no-agent', url: 'http://127.0.0.1:8018/api/catalog', reuseExistingServer: false, timeout: 30000},
+    {command: `"${pythonExecutable()}" -m london_office serve --port 8018 --no-agent`, cwd: projectRoot, env: {PYTHONUTF8: '1'}, url: 'http://127.0.0.1:8018/api/catalog', reuseExistingServer: false, timeout: 30000},
     ...(production ? [] : [{command: 'npm run dev', url: 'http://127.0.0.1:5178/', env: {BACKEND_URL: 'http://127.0.0.1:8018'}, reuseExistingServer: false, timeout: 30000}])
   ]
 });

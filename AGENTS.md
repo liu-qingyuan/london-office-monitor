@@ -27,7 +27,7 @@ GitHub Issues only；PR 不进入 triage 或 Ralph。见 `docs/agents/issue-trac
 ## 角色与权限
 
 - **编码 Agent**：默认拥有完整开发工具权限，可在授权任务内自主读写项目文件、执行命令、测试和调试，不需要为普通开发操作逐项申请。不继承应用 Agent 的只读或禁 shell 限制；实际工具与系统权限由宿主提供，本文件不提升操作系统权限。工具权限不等于扩大当前任务范围。
-- **应用里的市场 Agent**：是本项目构建的业务助手，只能调用 `docs/contracts.md` 批准的六个只读工具。禁用 shell、个人 MCP、web search 和多 Agent；不能修改代码、正式数据或自动发布研究结果。术语中的发布策略是设计概念，不是当前能力或授权。
+- **应用里的市场 Agent**：普通问答仍只有 `docs/contracts.md` 的六个只读市场工具，Web Search 禁用。明确选择来源发现时，同一 CodexAdapter 的独立临时 profile 可调用受预算约束的 Google metadata 工具与原生 Web Search；权限与证据边界见该合同。两种 profile 均禁 shell、个人 MCP、多 Agent，以及修改代码、正式行情或自动发布研究结果；候选记录不构成发布授权。
 
 ## 安全与验收
 

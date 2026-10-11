@@ -1,5 +1,5 @@
 import {MarketMap, type CameraState} from './map';
-import type {ApiError, AreaId, Catalog, ChatResult, Comparison, Evidence, Market, MetricId, Note, Observation, PeriodId, Source, ToolCall} from './types';
+import type {ApiError, AreaId, Catalog, ChatResult, Comparison, DiscoveryResult, Evidence, Market, MetricId, Note, Observation, PeriodId, Source, SourceCandidate, SourcePool, ToolCall} from './types';
 import './style.css';
 
 const $ = (selector: string): HTMLElement => {
@@ -88,6 +88,7 @@ app.innerHTML = `
       </form>
       <div id="agent-expansion" class="agent-expansion" hidden>
         <div class="agent-expansion-head"><div><h2 id="agent-heading">Evidence assistant</h2><p id="agent-context">Selected market context is included.</p></div><button type="button" id="close-agent" aria-label="Close Agent" title="Close assistant">${icon('<path d="m6 6 12 12M18 6 6 18"/>')}</button></div>
+        <div class="agent-operations"><label for="agent-mode">Mode</label><select id="agent-mode" aria-label="Assistant operation"><option value="market">Historical market</option><option value="discovery">Discover sources</option></select><button type="button" id="view-source-pool">View source pool</button></div>
         <div class="suggestions"><button type="button" class="suggestion" data-question="What changed in City average prime achieved rent from 2024 year-end to 2025 year-end?">City rent change ↗</button><button type="button" class="suggestion" data-question="Which areas have no verified prime rent data at 2025 year-end, and why should they remain missing?">Coverage gaps ↗</button></div>
         <p class="agent-privacy">Uses reported evidence. Only sends a request when you ask.</p><div id="agent-result" aria-live="polite"></div>
       </div>
@@ -336,7 +337,7 @@ function answerChart(previous: Observation, current: Observation): string {
 
 function toolCallBlock(call: ToolCall): string {
   const output = call.output;
-  const fields: Record<string,string> = {observations:'observation',comparisons:'comparison',sources:'source',evidence:'excerpt',notes:'event',areas:'area',metrics:'metric',periods:'period'};
+  const fields: Record<string,string> = {observations:'observation',comparisons:'comparison',sources:'source',candidates:'candidate',evidence:'excerpt',notes:'event',areas:'area',metrics:'metric',periods:'period'};
   const counts = output ? Object.keys(fields).filter(key => Array.isArray(output[key])).map(key => { const count = (output[key] as unknown[]).length; return `${count} ${fields[key]}${count === 1 ? '' : 's'}`; }).join(' · ') : 'Full output was not included by this runtime';
   const returned = output?.observations?.map(fact => `<div><span>${escapeHtml(scopeName(fact.area_id, fact.metric))}<small>${escapeHtml(periodName(fact.period))} · ${escapeHtml(fact.status)}</small></span><strong>${escapeHtml(formatValue(fact))}</strong></div>`).join('') ?? '';
   const changes = output?.comparisons?.map(c => `<div><span>${escapeHtml(scopeName(c.area_id, c.metric))}<small>${escapeHtml(periodName(c.previous_period))} → ${escapeHtml(periodName(c.current_period))}</small></span><strong>${escapeHtml(c.change_value === null ? `Not calculated · ${c.status}` : `${c.change_value > 0 ? '+' : ''}${formatNumber(c.change_value)} ${c.change_unit}`)}</strong></div>`).join('') ?? '';
@@ -378,6 +379,36 @@ function renderAgent(result: ChatResult, question: string, submittedContext: {ar
     showSection('market');
   }));
 }
+function sourceCandidateBlock(source: SourceCandidate): string {
+  const href = safeUrl(source.url);
+  const title = source.title || source.url;
+  return `<article class="answer-source source-candidate" data-candidate-id="${escapeHtml(source.id)}"><p>${href ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(title)} ↗</a>` : escapeHtml(title)}</p><small>Unverified search metadata · document coverage not verified</small>${source.snippet ? `<p>${escapeHtml(source.snippet)}</p>` : ''}<small>Date hint (unverified): ${escapeHtml(source.date_hint || 'Not returned')}</small><details><summary>Original URL &amp; complete occurrence provenance</summary><p>${escapeHtml(source.url)}</p><pre class="tool-output">${escapeHtml(JSON.stringify(source.occurrences, null, 2))}</pre></details></article>`;
+}
+function sourcePoolBlock(pool: SourcePool): string {
+  return `<p class="source-pool-summary">${pool.source_count} exact URL strings · ${pool.occurrence_count} captured occurrences</p><p class="warning">Not verified market observations. URL variants, old and irrelevant results are retained; counts do not prove business coverage. Selected map area is not document geography.</p><div class="source-topics">${pool.topics.map(topic => `<div class="source-topic"><strong>${escapeHtml(topic.label)}</strong><small>${escapeHtml(topic.status)} · ${topic.source_count} requested-topic URL strings</small></div>`).join('')}</div><details class="complete-source-pool"><summary>Complete captured pool · all URLs and provenance</summary>${pool.candidates.map(sourceCandidateBlock).join('') || '<p class="muted">No candidates recorded. This is not a market zero or a completed search.</p>'}</details>`;
+}
+function renderDiscovery(result: DiscoveryResult, question: string, area: AreaId): void {
+  $('.agent-shell').classList.add('has-answer');
+  $('#agent-result').innerHTML = `<article class="answer"><div class="answer-head"><span class="tiny-label">SOURCE DISCOVERY · METADATA ONLY</span><span>${escapeHtml(result.status)}</span></div><h2>AI source screening · unverified</h2><p id="answer-question">${escapeHtml(question)}</p><p class="submitted-context">Map selection at submission: ${escapeHtml(areaName(area))}. Source coverage and building location remain unverified.</p><section class="answer-assessment"><p class="answer-text">${escapeHtml(result.assessment)}</p></section><p class="metadata">Google: ${escapeHtml(result.provider_states.serpapi_google.status)} · Native Web Search: ${escapeHtml(result.provider_states.codex_native.status)} · Native internal HTTP count: unknown</p><section class="answer-sources"><h3>AI-selected leads · not source verification</h3>${result.pool.candidates.filter(source => result.selected_candidate_ids.includes(source.id)).map(sourceCandidateBlock).join('') || '<p class="muted">No bound candidates selected by this screening.</p>'}</section>${sourcePoolBlock(result.pool)}<section class="tool-activity"><h3>Actual Google tool execution</h3>${result.tool_calls.map(toolCallBlock).join('')}</section><p class="warning">${escapeHtml(result.warnings.join(' · '))}</p><footer class="answer-foot">No source snippet has updated formal market metrics or map geometry. Run ${escapeHtml(result.run_id)}</footer></article>`;
+}
+$('#view-source-pool').addEventListener('click', async () => {
+  if (chatBusy) return;
+  chatBusy = true;
+  setAgentExpanded(true);
+  $('#agent-result').innerHTML = '<p class="muted">Reading existing candidate archive · no search or model call…</p>';
+  try {
+    const pool = await api<SourcePool>('/api/discovery');
+    $('.agent-shell').classList.add('has-answer');
+    $('#agent-result').innerHTML = `<article class="answer"><h2>Archived source candidates</h2>${sourcePoolBlock(pool)}<p class="metadata">Read-only inventory; no search or model executed.</p></article>`;
+  } catch (error) { $('#agent-result').innerHTML = `<p class="alert error">${escapeHtml(message(error))}</p>`; }
+  finally { chatBusy = false; }
+});
+$('#agent-mode').addEventListener('change', () => {
+  const discovery = ($('#agent-mode') as HTMLSelectElement).value === 'discovery';
+  $('.suggestions').hidden = discovery;
+  $('.agent-privacy').textContent = discovery ? 'Explicit request only: Google + native Web Search collect unverified metadata. An authorized budget receipt is required. No market values or geometry are published.' : 'Uses reported evidence. Only sends a request when you ask.';
+  ($('#question') as HTMLInputElement).placeholder = discovery ? 'Find original London office source reports…' : 'Ask about this market…';
+});
 $('#chat-form').addEventListener('submit', async event => {
   event.preventDefault();
   if (chatBusy) return;
@@ -385,6 +416,7 @@ $('#chat-form').addEventListener('submit', async event => {
   const question = input.value.trim();
   if (!question) return;
   const submittedContext = {area_id: selected, metric, period};
+  const discoveryMode = ($('#agent-mode') as HTMLSelectElement).value === 'discovery';
   setAgentExpanded(true);
   $('.agent-shell').classList.remove('has-answer');
   chatBusy = true;
@@ -394,10 +426,15 @@ $('#chat-form').addEventListener('submit', async event => {
   if (button) button.disabled = true;
   $('#agent-result').innerHTML = '<p class="alert loading" role="status">Waiting for the assistant… Completed Python tool activity and returned data will appear with the answer.</p>';
   try {
-    const response = await api<ChatResult>('/api/chat', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({question, ...(sessionId ? {session_id: sessionId} : {}), context: submittedContext})});
-    if (response.status !== 'completed') throw new Error('Assistant did not complete its evidence-backed run.');
-    sessionId = response.session_id;
-    renderAgent(response, question, submittedContext);
+    if (discoveryMode) {
+      const response = await api<DiscoveryResult>('/api/discovery', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({question, ...(catalog?.discovery_topics ? {topic_ids: catalog.discovery_topics.map(topic => topic.id)} : {}), context: {area_id: submittedContext.area_id}})});
+      renderDiscovery(response, question, submittedContext.area_id);
+    } else {
+      const response = await api<ChatResult>('/api/chat', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({question, ...(sessionId ? {session_id: sessionId} : {}), context: submittedContext})});
+      if (response.status !== 'completed') throw new Error('Assistant did not complete its evidence-backed run.');
+      sessionId = response.session_id;
+      renderAgent(response, question, submittedContext);
+    }
   } catch (error) {
     const detail = message(error);
     const login = /login|not.logged|not_authenticated|authentication|unauthorized|subscription.auth/i.test(detail);

@@ -1,21 +1,31 @@
 # 五页英文业务演示
 
-正文面向业务评审使用英文；生成方式和项目文档使用中文。`scripts/build_slides.py` 共用 Python Market Interface 的真实历史值、计算和来源，输出恰好 5 页 PPTX 与可打印 HTML；不复制第三方报告或图表。
+正文面向业务评审使用英文；生成方式和项目文档使用中文。评测要求提交可运行的 Python Agent PoC 和面向业务团队的 3–6 页演示；当前保留五页，不在提交前重做内容和版式。评测原附件不进入源码或交付包。
+
+本目录拥有演示内容、PPTX／HTML 排版和 PDF 打印实现：`build_slides.py` 共用 Python Market Interface 的真实历史值、计算和来源；`print_slides.mjs` 用项目专用 Chromium 打印。应用不依赖演示生成器，不复制第三方报告或图表。项目 ZIP 清单与打包仍由根级 `scripts/package_delivery.py` 拥有。
 
 ## 生成
 
 在项目根目录完成固定依赖安装后执行：
 
 ```bash
-uv run python scripts/build_slides.py
+uv run python presentation/build_slides.py
 # 使用真实本地应用截图与已审阅的验证状态
-uv run python scripts/build_slides.py --screenshot artifacts/london-map.png --verification artifacts/presentation/verification.json
-node scripts/print_slides.mjs
+uv run python presentation/build_slides.py --screenshot artifacts/london-map.png --verification artifacts/presentation/verification.json
+node presentation/print_slides.mjs
 ```
 
 产物在 `artifacts/presentation/`，默认不提交。HTML/PDF 和 PPTX 共用内容，但分别排版；PDF 通过专用 Chromium 打印，不连接现有浏览器。没有截图时展示明确标注的流程图，不制造 UI 截图。
 
+原命令 `uv run python scripts/build_slides.py` 和 `node scripts/print_slides.mjs` 继续接受相同参数、输出相同路径；它们只转交本目录的实现。依赖和锁文件保持原样，尚未提取跨项目通用渲染工具。
+
 `--verification` 的 JSON 字段为 `offline_tests`、`map_e2e`、`live_model`；值只能是 `Verified`、`Failed` 或 `Not yet verified`。默认全部未验证；该文件只是展示状态，必须另有真实命令、输入和执行证据，不能充当测试证据本身。模型未登录/未实测时保持 `Not yet verified`。
+
+## 验证与维护
+
+`tests/test_presentation.py` 通过实际生成命令验证新旧入口、五页 PPTX／HTML、讲稿与验证状态；输出只写入专用临时目录，不覆盖经审阅的演示产物。沿用根目录 unittest 和 `frontend` 的 `npm run check:quick`，不另建检查入口。当前事实与关联路径见 [`feature 记录`](../docs/features/presentation.md)。
+
+生成器的部分解释文字仍绑定现有两期快照。更新来源／时期／数值时，需要同时核对表格、提示、讲稿与来源日期；当前目录收拢不代表已解决所有内容参数化问题。PPT 内容和截图也不自动跟随应用更新，提交前需选定真实截图和有执行证据的验证状态。
 
 ## 五分钟业务演示
 

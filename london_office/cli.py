@@ -9,6 +9,8 @@ from .data import read_document
 from .market import Market
 from .runtime import AgentError, CodexAdapter
 from .settings import Settings
+from .source_pool import SourcePool, TOPICS
+from .discovery import GoogleDiscovery, DiscoveryError
 
 
 def _print(value):
@@ -38,6 +40,12 @@ def main():
     login.add_argument("--device", action="store_true")
     sub.add_parser("status")
     sub.add_parser("models")
+    sub.add_parser("sources", help="Read archived source candidates without searching or calling a model")
+    collect = sub.add_parser("collect-sources", help="Explicit bounded Google metadata collection; not verified market data")
+    collect.add_argument("--query", required=True)
+    collect.add_argument("--topic", action="append", choices=list(TOPICS), required=True)
+    collect.add_argument("--area-context", choices=["city", "west_end", "canary_wharf", "midtown_fringe"])
+    collect.add_argument("--budget-file", type=Path, required=True, help="Existing operator-authorized receipt; never automatically created or reset")
     chat = sub.add_parser("chat")
     chat.add_argument("question", nargs="?")
     serve = sub.add_parser("serve")
@@ -64,6 +72,13 @@ def main():
                 raise ValueError("inspect accepts a user-supplied report PDF/HTML/text, not credential or configuration files")
             text = read_document(args.report)
             _print({"characters":len(text), "preview":text[:400], "validated_as_market_data":False})
+        elif args.command == "sources":
+            _print(SourcePool(Settings.from_env().discovery_dir).view())
+        elif args.command == "collect-sources":
+            settings = Settings.from_env()
+            discovery = GoogleDiscovery(SourcePool(settings.discovery_dir), args.budget_file)
+            context = {"area_id": args.area_context} if args.area_context else None
+            _print(discovery.search(args.query, topic_ids=args.topic, context=context))
         elif args.command == "serve":
             import uvicorn
             from .app import create_app
@@ -100,6 +115,9 @@ def main():
                             _print({"status":"error","error":{"code":error.code,"message":error.message}})
     except AgentError as error:
         _print({"status":"error","error":{"code":error.code,"message":error.message}})
+        return 1
+    except DiscoveryError as error:
+        _print({"status":"error", "error":{"code":error.code,"message":error.message}})
         return 1
     except (ValueError, OSError) as error:
         _print({"status":"error","error":{"code":"operation_failed","message":str(error)}})

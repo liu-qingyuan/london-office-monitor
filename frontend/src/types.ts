@@ -8,7 +8,8 @@ export interface Metric {id: MetricId; label: string; unit: string; definition: 
 export interface Period {id: PeriodId; label: string; as_of: string}
 export interface Catalog {
   schema_version: number; areas: Area[]; metrics: Metric[]; periods: Period[]; limitations: string[];
-  agent: {runtime: string; enabled: boolean; model: string; auth_mode: string};
+  agent: {runtime: string; enabled: boolean; model: string; auth_mode: string; discovery_configured?: boolean};
+  discovery_topics?: {id: SourceTopicId; label: string}[];
 }
 export interface Observation {
   id: string; area_id: AreaId; source_area: string | null; metric: MetricId; period: PeriodId;
@@ -49,5 +50,27 @@ export interface ChatResult {
   schema_version: number; session_id: string; run_id: string; status: 'completed'; answer: string;
   facts: Observation[]; calculations: Comparison[]; sources: Source[]; evidence: Evidence[];
   notes: Note[]; warnings: string[]; tool_calls: ToolCall[];
+}
+export type SourceTopicId = 'rents' | 'vacancy' | 'leasing' | 'supply' | 'submarkets' | 'macro' | 'demand' | 'news';
+export interface SourceCandidate {
+  id: string; url: string; title: string | null; snippet: string | null; date_hint: string | null;
+  content_basis: 'search_metadata'; verification_status: 'unverified_search_metadata';
+  source_geography: {status: 'not_verified'; granularity: null}; requested_topics: SourceTopicId[];
+  occurrences: {provider: 'serpapi_google' | 'codex_native'; run_id: string; query: string | string[] | null;
+    provider_path: string | null; thread_id: string | null; turn_id: string | null; tool_item_id: string | null; ref_id: string | null}[];
+}
+export interface SourcePool {
+  schema_version: number; data_kind: 'source_candidates'; source_count: number; occurrence_count: number;
+  candidates: SourceCandidate[]; warnings: string[];
+  topics: {id: SourceTopicId; label: string; status: string; source_count: number; completed_searches: number}[];
+  runs: {id: string; provider: string; status: string; query: string | null; intent_context: Record<string,unknown> | null}[];
+}
+export interface DiscoveryResult {
+  schema_version: number; data_kind: 'source_discovery'; run_id: string; status: 'completed_metadata_only' | 'partial';
+  assessment: string; assessment_basis: 'ai_generated_source_screening'; selected_candidate_ids: string[];
+  pool: SourcePool; warnings: string[]; tool_calls: ToolCall[];
+  provider_states: {serpapi_google: {status: string; successful_runs: number};
+    codex_native: {status: string; searches_started_observed: number; searches_completed_observed: number;
+      candidate_occurrences_captured: number; http_request_count: null}};
 }
 export interface ApiError {status: 'error'; error: {code: string; message: string}}

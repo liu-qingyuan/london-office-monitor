@@ -1,6 +1,6 @@
 # 首版 Interface 与数据合同（v1）
 
-用户已批准 JSON/GeoJSON 快照、JSONL 工具证据及三个 HTTP 入口。以下是唯一的跨 Module 合同；Codex 内部对象不进入这些结果。HTTP 仅绑定 localhost，界面和 HTTP 同源。
+首版 Market 保留 JSON/GeoJSON 快照、JSONL 工具证据及原三个 HTTP 入口。用户另已批准小步接入显式来源发现、独立 JSON 候选池和隔离工具权限，不走新增 Spec／Tickets／Ralph。以下是跨 Module 合同；Codex 内部对象不进入业务结果。HTTP 仅绑定 localhost，界面和 HTTP 同源。
 
 ## 数据与口径
 
@@ -29,7 +29,7 @@
 }
 ```
 
-`agent.enabled` 表示服务器允许使用该 Adapter，不意味着已经登录或完成模型实测。启动 UI 不自动消耗模型额度。
+`agent.enabled` 表示服务器允许使用该 Adapter，不意味着已经登录或完成模型实测。`agent.discovery_configured` 表示已指定候选发现预算文件，不证明登录、剩余配额或实测通过。`discovery_topics:[{id,label}]` 来自 Data 的 topic 目录。启动 UI 不自动消耗模型额度。
 
 ## GET /api/market?metric=prime_rent&period=2025-YE&area=city
 
@@ -68,15 +68,35 @@ HTTP 结果中的数字、比较及事实面板都由同一 Python Market Module
 
 ## 允许的 Python 业务工具
 
-此处权限约束的是应用里的市场 Agent，不是编码 Agent；开发角色与任务范围见根 `AGENTS.md`。研究／自动发布目前只是设计概念，没有对应业务工具或执行授权。
+此处权限约束的是应用里的普通市场问答，不是编码 Agent或下述显式发现 profile；开发角色与任务范围见根 `AGENTS.md`。正式研究接纳／自动发布仍没有执行授权。
 
 `market_catalog()`、`market_query(area, metric, period)`、`compare_periods(area, metric, previous_period, current_period)`、`market_brief(period, area?)`、`source_details(source_id)`、`verify_source(source_id)`。只读，通过项目内 MCP 暴露；精确批准这些工具，禁止 shell、web search、个人 MCP、外部 Agent。
 
 `verify_source` 只抓取快照白名单中的官方 HTTPS URL、检查短摘录是否仍在原文、记录时间/hash 和缺失摘录。不得接收任意 URL，不自动覆盖快照或保证新报告已经入库。数据更新通过显式 CLI 校验；新增机构/统计定义需按合同确认后再加入。
 
+## 来源候选：GET /api/discovery
+
+只读已保存库存，不搜索、不调用模型、不刷新正式行情。返回 `{schema_version:1,data_kind:"source_candidates",topics,candidates,runs,source_count,occurrence_count,warnings}`。八个 topic 为 rents、vacancy、leasing、supply、submarkets、macro、demand、news；每项包含 id、label、status、source_count、completed_searches。状态为 not_searched、metadata_collected、metadata_unavailable、partial、failed、not_executed，描述执行／metadata，不证明内容、时间或市场覆盖。已完成搜索但零候选的 run 使用 completed_no_candidates；其 completed_searches 仍计入已完成执行，metadata_unavailable 不等于市场缺失或零值。完全相同 URL 去重；片段、镜像及未核验 canonical 不合并，所有出现保留。
+
+Candidate 为 `{id,url,title,snippet,date_hint,content_basis:"search_metadata",verification_status:"unverified_search_metadata",source_geography:{status:"not_verified",granularity:null},requested_topics,occurrences}`。标题／日期可以为 null；日期只是索引 hint，不是核验后的发布日期。occurrence 保留 run_id、provider、query、topic_ids、provider_path／position、provider_query、原 URL／标题／snippet／日期及 ref_id、thread_id、turn_id、tool_item_id；原生 batch query 可为字符串列表，不能推断每个结果属于其中哪条 query。短 ref 只在其完整执行范围内有效。run 保留 provider、用户意图 context、状态、时间和安全错误；选择区不写成候选 area_id。
+
+## 显式来源发现：POST /api/discovery
+
+输入 `{question,topic_ids?:string[],context?:{area_id?:string}}`，不接受 key、预算路径、session_id 或任意工具名。问题 1–2000 字符，topic 1–8 项、已知 ID；默认八项意图，UI 使用 Data 目录。只有明确提交 Discover sources 才启动；普通问答、missing、切区、打开导航／候选池或后台不会触发。关闭面板不取消已提交请求。
+
+同一 CodexAdapter 创建临时发现 thread，不用于普通会话。原市场六工具保留 Web Search disabled；发现 profile 只允许 `google_search_sources(query)` 和 native Web Search，禁 shell／代码工具／个人 MCP／多 Agent。Google 只调用 SerpAPI Google endpoint、第一页 index metadata；保留完整响应，不取固定前 N 条。确认 Active Free Plan、价格为零、可用额度后才发 search，拒绝未知／付费配额、重定向、自动重试、升级及 endpoint fallback。不自动获取源网页全文或商业 PDF。
+
+`LONDON_DISCOVERY_BUDGET_FILE` 必须指向已有、另行获准的本仓库专用 receipt；不会自动创建、续约或重置。当前 receipt 上限 Google 8 个搜索 HTTP starts、Codex 3 个调用方轮启动（native discovery 2＋market validation 1）；失败／超时占已开始额度，原生内部 HTTP、token／费用与覆盖未知。同一配置的普通 chat 验证也计入 market 子额度。Google 每个发现请求一次尝试，跨 MCP 重连用 receipt 保留限制；原生 search-only，最多两个可观察工具项／query，越界通知触发 interrupt，不能声称阻止了未知内部请求或强制两工具选择。原生 results 是 SDK 可见不透明 metadata，不是 Google 原始 SERP。
+
+结果 `{schema_version:1,data_kind:"source_discovery",run_id,status,assessment,assessment_basis:"ai_generated_source_screening",selected_candidate_ids,pool,provider_states,tool_calls,warnings}`。status 为 completed_metadata_only（本轮两个通路都有实际完成与候选 metadata）或 partial；原生 provider state 包含可观察开始／完成项数、捕获 URL 出现数以及 `http_request_count:null`。筛选 URL 必须绑定本轮实际捕获的 metadata，AI assessment 保持定性；完整库存与模型选中集合分开。工具失败、权限越界、无法绑定回答、超时／配额错误都保留实际证据，不冒充市场无资料，不更新 observations／几何或授予发布权限。
+
 ## 持久化与认证
 
 - `data/snapshot.json`：版本化 source/evidence/observations/notes/catalog；`data/areas.geojson`：独立的示意选择几何。
-- `var/runs/*.jsonl`：Python 工具执行证据；不提交、不放入默认发布包。测试证据经审阅后另行导出脱敏版本。
+- `var/runs/*.jsonl`：Python 工具执行证据；发现的 typed SDK journal、输入、响应／失败在 `var/runs/discovery/<run>/`。不提交、不放入默认发布包。测试证据经审阅后另行导出脱敏版本。
+- `var/discovery/records/*.json`：schema_version=1 的不可覆盖来源运行记录（data_kind=source_candidate_run、recorded_at、run、occurrences），发布完整记录后才可读；`evidence/<run>/` 保存已脱敏请求、Google 完整 metadata JSON 与执行证据。库存每次重读，不需要 Market 重启；与正式 snapshot／前端 Market 缓存独立。可用 `LONDON_DISCOVERY_DIR` 指向专用运行目录，不引入数据库。
+- SerpAPI key 只由后端处理。直接 CLI 与应用父后端优先使用显式 `SERPAPI_API_KEY`；仅 macOS 可复用既有专用 Keychain service，不在其他系统运行 macOS 命令、不查找其他个人凭据或配置。应用发现 MCP 通过请求级认证 loopback JSON 桥接调用父后端的 Google 工具，实际 key 不进入 SDK 配置、MCP 环境／命令参数、模型或 UI，`SERPAPI_API_KEY` 仍显式清空。桥接绑定 `127.0.0.1` 动态端口，仅接受有界 `{query}`，短期 capability 不能获取 key、改变父后端拥有的预算／topic／context／request ID；禁止代理、重定向与自动重试。启动失败、timeout、完成／异常与 Adapter.close 均关闭监听，已开始的外部调用不恢复额度。普通市场 profile 不使用桥接，HTTP／业务工具 DTO 保持不变。Free quota 只保存白名单字段；原始 account body／邮箱不传给模型，JSON／URL 编码的 key 回显仍在保存／返回前拒绝。
+- receipt JSON 继续使用现有字段与原子替换，明确 UTF-8；内部 `.lock` 在 POSIX 使用 `fcntl`、原生 Windows 使用 `msvcrt` 单字节互斥。不删除锁、自动生成或重置 receipt 来获得平台兼容。候选池需要支持硬链接的本地文件系统（通常为 macOS／Linux 本地文件系统或 Windows NTFS），保留不可覆盖、完整记录才可见的语义。
+- Google HTTPS 默认遵循标准代理配置（如 `HTTPS_PROXY`）；显式 `LONDON_SERPAPI_PROXY` 可覆盖，空值表示直连。不固定个人机器代理端口；Google endpoint、Free Plan 检查、预算、禁重定向／重试不变。详细实现取舍见 [ADR 0003](adr/0003-portable-discovery-backend.md)。
 - Codex home 位于仓库外专用目录；SDK 管理自己的登录，代码不读凭据文件、不拷贝个人 config。
 - API key 是明确选择的独立计费认证方式；订阅模式阻止继承环境中的 API key，绝不自动回退。首轮会话开始前通过 SDK 的 models() 核验账户可用模型。

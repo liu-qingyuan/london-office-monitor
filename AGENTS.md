@@ -20,6 +20,10 @@ GitHub Issues only；PR 不进入 triage 或 Ralph。见 `docs/agents/issue-trac
 
 单 context：根目录 `GLOSSARY.md` + `docs/adr/`。见 `docs/agents/domain.md`。
 
+### Feature records
+
+已启用时先执行 `./.feature-docs/run list`，只读相关记录；维护与交付见 `docs/agents/feature-docs.md`。独立小任务可在同一 `main` / worktree 并行，先分配不相交写入文件与单一整合者；共享 Git、完整测试与构建由整合者串行执行。
+
 ## 角色与权限
 
 - **编码 Agent**：默认拥有完整开发工具权限，可在授权任务内自主读写项目文件、执行命令、测试和调试，不需要为普通开发操作逐项申请。不继承应用 Agent 的只读或禁 shell 限制；实际工具与系统权限由宿主提供，本文件不提升操作系统权限。工具权限不等于扩大当前任务范围。

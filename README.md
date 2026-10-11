@@ -13,9 +13,9 @@
 
 ## 实施入口与当前状态
 
-**#5 仅交付绿色增量，整体性能与用户产品验收仍未完成。** 最新快速检查（27 Python＋类型）**1.21 秒**，SwiftShader 真实着色聚焦 **25.01 秒**；生产、专用 Chromium／Apple M5 Pro Metal 的完整无模型命令（含业务、build、服务器／浏览器、33 项 E2E 和证据）**53.66 秒全部通过**。两视窗独立三次用户样本反馈最多 **60ms**、热态完整呈现最多 **570.1ms**，冷启动业务最多 **408.1ms**、可探索背景最多 **4663.4ms**；完整命令中的 pending 降级呈现 **14981.9ms**。但默认 SwiftShader 完整命令 **57.66 秒截止：16 pass、4 明确跳过用户性能专用项、13 未执行**，仍为 RED；硬件结果不能替它转绿。#5 保持打开待重新 triage；不新增模型调用，replay 不替代实时模型、用户产品验收或 Issue #1 原独立 Closure。全部样本、首失败、去重覆盖与限制见 [`docs/verification.md`](docs/verification.md)。
+**用户已认可当前性能结果，本阶段收口；剩余软件渲染优化暂缓。** 最新实现提交为 `0177481`：27 项 Python＋类型检查 **1.21 秒**通过；已测试的 Apple M5 Pro／Metal 完整真实地图回归 **33/33 通过，命令共53.66秒**。SwiftShader 完整运行仍是截止未完成（16 pass、4 明确跳过、13 未执行），不是完整 GREEN；不继续为本阶段追求完整回归 **60秒**硬目标，也不设替代上限。原始失败、全部样本与限制见 [`docs/verification.md`](docs/verification.md)。
 
-相关实现／测试已保存为 main 代码基线 `52d205ad700a6940dfee015a21c2795a27d8d29c`，已知失败不因此变绿。当前使用 main，不新建分支或 worktree；代码提交不自动启动 Ralph。当前工作是先恢复既有地图性能，不扩展地区检索、研究或发布。权威要求见 [Spec #2](https://github.com/liu-qingyuan/london-office-monitor/issues/2)，正文镜像为 [`docs/specs/map-performance.md`](docs/specs/map-performance.md)：完整无模型回归上限已收紧为 **60 秒**，不是固定等待时间或已通过声明。保留 [#3 热态交互](https://github.com/liu-qingyuan/london-office-monitor/issues/3)、[#4 冷启动／降级](https://github.com/liu-qingyuan/london-office-monitor/issues/4)、[#5 验证反馈](https://github.com/liu-qingyuan/london-office-monitor/issues/5) 三票；#5 依赖 #3、#4。用户已批准原地转为 Ralph-ready，父子票共享 `main`／`origin/main` 的完整 Git 基线（父 spec 最终 `## Git`）；实际领取仍需通过只读 eligibility gate，启动循环须另行明确请求。
+[#3 热态交互](https://github.com/liu-qingyuan/london-office-monitor/issues/3)、[#4 冷启动／降级](https://github.com/liu-qingyuan/london-office-monitor/issues/4) 已关闭；[#5 验证反馈](https://github.com/liu-qingyuan/london-office-monitor/issues/5) 保持 open、`ready-for-human`，正文标明暂缓，等待用户另行决定是否恢复，不进入自动实施队列。最新决定以 [Spec #2](https://github.com/liu-qingyuan/london-office-monitor/issues/2)／[`正文镜像`](docs/specs/map-performance.md) 为准。继续使用 main，不新建分支或 worktree，不再次启动 Ralph。当前阶段认可不代表新模型实测、跨硬件保证或 Issue #1 原独立 Closure 已完成；后续功能／权限扩展仍须另行授权。
 
 编码 Agent 的完整开发工具权限与应用市场 Agent 的六工具只读权限分开，见 [`AGENTS.md`](AGENTS.md)。初始化先读当前 Ticket 正文／评论、同一份 [`GLOSSARY.md`](GLOSSARY.md)、[`docs/contracts.md`](docs/contracts.md) 和相关 [`docs/adr/`](docs/adr/)，明确当前任务范围与已知失败；不因“工具能做”顺手扩大任务。
 
@@ -66,7 +66,7 @@ python3.12 -m venv .venv
 - 在集成详情展开年份来源，查看原始短摘录及出处。顶部 **Ask about this market…** 胶囊输入问题；聚焦/建议不发送模型请求，主动按箭头或 Enter 才发送。回答默认展示数值、图表、Python 比较、来源与 AI 定性解读；**Tools used** 可展开该次精确输入、返回摘要和完整 JSON。回答范围按实际证据标注，不借用地图选中标签；**View on map** 才显式聚焦对应范围。关闭或 Escape 收起并保留内容，已打开的集成详情不被替换；关闭展示不取消已主动提交的请求。不建立调查派单或自动研究发布流程。
 - 底图失效时明确提示，仍保留真实市场数据与示意选择；不以静态截图/假城市代替 3D 服务。
 
-当前 WIP 已包含集成左侧详情、选择及真实建筑着色和相关回归；性能仍待修复与验收，未新增 HTTP 合同、数据、研究/发布能力或模型调用。材料/交互参考用户 `test1.png` 和 [Apple visionOS Tab bars](https://developer.apple.com/design/human-interface-guidelines/tab-bars)，使用 CSS blur、半透明、高光与阴影，不是原生 Apple Liquid Glass 或完整光学折射。前次 chat 的实际业务 `output` 扩展保留。旧 PPT/ZIP 未重新生成，旧截图不代表新界面；视觉与业务验收仍由用户确认。
+当前实现已包含集成左侧详情、选择及真实建筑着色和相关回归；用户认可本阶段性能结果，剩余优化暂缓。未新增 HTTP 合同、数据、研究/发布能力或模型调用。材料/交互参考用户 `test1.png` 和 [Apple visionOS Tab bars](https://developer.apple.com/design/human-interface-guidelines/tab-bars)，使用 CSS blur、半透明、高光与阴影，不是原生 Apple Liquid Glass 或完整光学折射。前次 chat 的实际业务 `output` 扩展保留。旧 PPT/ZIP 未重新生成，旧截图不代表新界面；视觉与业务验收仍由用户确认。
 
 ## 用自己的账户启用 Agent
 
@@ -109,7 +109,7 @@ npm run check:quick                  # ≤10 秒：27 项 Python＋类型；普�
 # ≤30 秒：按改动传入原测试文件／-g；包含 production build、服务器、浏览器与证据
 OFFICE_USER_RENDERER=1 npm run check:focused -- tests/left-detail.spec.ts -g 'same-size selections|buildings and labels'
 npm run check:focused -- tests/left-detail.spec.ts -g 'buildings and labels' --workers 1
-# ≤60 秒阶段收尾：完整真实业务与地图，不另跑未计时的地图命令
+# 可选完整真实业务／地图检查；现有命令仍有原60秒截止，已不作本阶段硬门槛
 OFFICE_USER_RENDERER=1 npm run check:full  # 当前固定机器 GPU 33 项完整 GREEN，53.66 秒
 npm run check:full                       # SwiftShader 对照，当前截止仍 RED；不冒充完整通过
 # 固定输入三次独立用户采样；分别把 1600 替换成 390 再执行，两种视窗各一条命令
@@ -142,4 +142,4 @@ uv run python scripts/package_delivery.py
 
 数据 Module 拥有来源/标准化/证据；Market Module 拥有定义与比较；Codex Adapter 独占 SDK/认证/线程/事件转换；界面只消费业务 JSON。未来其他运行时需要新增并验证 Adapter，不重写数值工具或把 SDK 对象传给 UI。架构决策见 `docs/adr/`，术语见 `GLOSSARY.md`。
 
-GitHub Issues 是唯一需求/triage/backlog 入口，PR 正常 review；默认五标签与中文约定见 `docs/agents/`。`AGENTS.md` 是公开的项目初始化约定，已解除忽略以随源码保存；没有启动 Ralph。已有三个获用户批准的性能 Tickets，不自动新增或扩展 backlog。新数据定义、依赖、合同、付费调用和发布/分享权限变更需先确认。
+GitHub Issues 是唯一需求/triage/backlog 入口，PR 正常 review；默认五标签与中文约定见 `docs/agents/`。`AGENTS.md` 是公开的项目初始化约定，已随源码保存。获授权的 Ralph 本轮已结束；#5 剩余工作按用户决定暂缓，不自动恢复循环、另拆票或扩展 backlog。新数据定义、依赖、合同、付费调用和发布/分享权限变更需先确认。

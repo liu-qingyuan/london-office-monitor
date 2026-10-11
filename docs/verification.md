@@ -1,10 +1,17 @@
 # 执行验证记录
 
-**工程样机，当前性能基线尚未获性能或用户产品验收。** 以下先列当前已知失败，再保留此前版本的历史 GREEN 和首版 SDK 记录；不能把它们当作最新实现通过。独立审查 Closure 仍未完成。数据为 Savills 2024 / 2025 年末历史快照，不是最新/实时行情。
+**工程样机；用户已认可当前性能结果，本阶段收口，剩余优化暂缓。** 阶段认可不意味着 SwiftShader 完整回归、新模型实测、全部产品验收或 Issue #1 原独立 Closure 通过。以下保留各轮原执行结果和失败；历史状态／60秒目标以本节最新决定为准。数据为 Savills 2024 / 2025 年末快照，不是实时行情。
 
 来源：[Issue #1](https://github.com/liu-qingyuan/london-office-monitor/issues/1)、[性能 Spec #2](https://github.com/liu-qingyuan/london-office-monitor/issues/2)、`docs/spec.md`、`docs/contracts.md`。历史首版审查 fixed point 为 `d1cf15b`，不是当前 WIP 的固定基线；记录日期 2026-10-10 Asia/Shanghai，执行文件使用 UTC。
 
-## Ticket #5 验证反馈（硬件绿色增量；软件闭环未完成，保持 open）
+## 当前决定：取消60秒硬门槛，剩余工作暂缓
+
+- 用户确认 `0177481` 的现有实现足够，本性能阶段不再继续优化；完整无模型回归不设60秒或其他替代硬上限。既有用户体验及快速／聚焦目标不变，权威要求见 `docs/specs/map-performance.md`／Spec #2。
+- #3／#4 已关闭。#5 保持 open、`ready-for-human`，明确标记暂缓；软件完整闭环、窄屏信息卡遮挡关闭入口、关闭／复位后的 overflow 断言补强仅保留记录，用户重新授权前不自动实施、拆票或恢复 Ralph。
+- 已测试 GPU 的33项完整 GREEN 仍有效；SwiftShader 原截止失败和13项未执行仍未获完整验证，不改写报告或以放宽 timeout 伪造原目标通过。当前检查命令保留原实现，`check:full` 仍有原截止，本阶段不要求继续用软件整套证明60秒。
+- 本次只修改决定／入口文档和 GitHub 状态，离线业务、真实地图融合／E2E、实时模型均未新执行。原测试、trace、截图、profile、逐次样本不改动；原 #1 的审查和模型／交付待办不由阶段认可自动关闭。
+
+## Ticket #5 Ralph 执行记录（历史：硬件绿色增量；软件闭环未完成）
 
 本轮 fixed point `185ed43a4592b4a1dc8887da4cd67cc94cfead0b`。只修改既有测试组织、npm 命令和验证文档，不改生产 Module／Interface／状态机；本票局部 Mermaid Gate 为“不需要图”。环境为 Mac17,9 / Apple M5 Pro / 64GiB / 18 logical CPUs、Node 25.9.0、Python 3.12.13、项目 Playwright 1.64 / Chromium 156.0.8078.4；生产 bundle `index-DekzR4Sk.js`，DPR 1，正常动画，1600×1000／390×844。所有服务器独立绑定 8018、`--no-agent`；数据仍为 Savills 两期真实历史摘录，背景为 OpenFreeMap。
 

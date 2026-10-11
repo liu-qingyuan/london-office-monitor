@@ -6,15 +6,15 @@ Python Agent PoC 和 5 页英文业务演示文稿是必交；地图为额外成
 
 首条纵向切片使用 Savills 2024 / 2025 年末报告的 City / West End 平均 prime rent；同一快照补充已核验的 Grade A rent 和 overall vacancy。其他两区保持缺失。地图示意不是统计覆盖。详细合同见 `docs/contracts.md`。
 
-## 地图性能迭代（已确认，尚未验收）
+## 地图性能迭代（当前阶段认可，剩余优化暂缓）
 
 父级 spec：[Spec: 地图性能与快速测试反馈 #2](https://github.com/liu-qingyuan/london-office-monitor/issues/2)；完整正文镜像见 [地图性能 spec](specs/map-performance.md)。GitHub Issues 是唯一 tracker，本地文档不另建 Ticket／状态清单。
 
-本轮先处理已观察的渲染与测试耗时，再扩展地区搜索／AI 标注。用户浏览器与 SwiftShader 测试反馈分别验收；具体时间预算、测量起止点、既有 UI／Market 测试 Seam、八张当前／目标图和失败处理以父 spec 为准。不能靠提高超时、删必要覆盖、假地图或挑选最快结果达标。
+用户已确认当前实现足够，本性能阶段收口；完整无模型回归的 **60秒硬门槛撤销**，不恢复3分钟或另设替代上限。#3（热态交互）、#4（冷启动／降级）已关闭；#5 的软件完整闭环与低优先补强保持 open、`ready-for-human`，标明暂缓。未获用户重新授权前，不继续实施、恢复 Ralph 或另建后续票。
 
-完整无模型回归上限已按用户最新确认收紧为 **60 秒**（其他预算与口径见父 spec），不是已通过声明。保留已批准的 #3（热态交互）、#4（冷启动／降级）、#5（验证反馈），#5 依赖 #3、#4；不重复拆票。
+已测试 GPU 环境的完整33项回归通过，SwiftShader 原截止失败与未执行覆盖仍保留，不因阶段认可变成 GREEN。用户浏览器／软件渲染证据仍分开，不以修改 timeout、删除覆盖或假地图伪造旧目标达标。具体决定、测量口径与八图以父 spec 为准，完整证据见 `docs/verification.md`。
 
-当前 WIP 尚未通过性能验收；以下首版交付勾选不构成本轮通过声明。当前状态和已知失败见 `docs/verification.md`。编码／应用 Agent 的不同权限及初始化入口见根 `AGENTS.md`、`README.md`。Ralph 的启动和 Git 契约另行核验，不因本次文档整理自动开始实施。
+以下首版交付勾选仍是历史状态；最新模型实测、全部业务／视觉验收和 Issue #1 原独立 Closure 不自动完成。编码／应用 Agent 的权限与实施入口见根 `AGENTS.md`、`README.md`。后续功能扩展需要单独任务授权。
 
 ## 首版交付验收（历史状态）
 

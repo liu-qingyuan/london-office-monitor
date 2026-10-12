@@ -10,7 +10,6 @@ import os
 import subprocess
 import sys
 import time
-from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.error import HTTPError
@@ -18,6 +17,7 @@ from urllib.parse import unquote, unquote_plus, urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 from uuid import uuid4
 from .source_pool import SourcePool, TOPICS
+from .storage import file_lock as _receipt_lock, atomic_json
 
 
 class DiscoveryError(ValueError):
@@ -66,31 +66,6 @@ def _open(request, timeout):
     return build_opener(handler, _NoRedirect()).open(request, timeout=timeout)
 
 
-@contextmanager
-def _receipt_lock(path: Path):
-    """Hold one process-shared lock across receipt read/replace on POSIX or Windows."""
-    with path.open("a+b") as lock:
-        if os.name == "nt":
-            import msvcrt
-            if lock.tell() == 0:
-                lock.write(b"\0")
-                lock.flush()
-            lock.seek(0)
-            msvcrt.locking(lock.fileno(), msvcrt.LK_LOCK, 1)
-            try:
-                yield
-            finally:
-                lock.seek(0)
-                msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
-        else:
-            import fcntl
-            fcntl.flock(lock, fcntl.LOCK_EX)
-            try:
-                yield
-            finally:
-                fcntl.flock(lock, fcntl.LOCK_UN)
-
-
 class DiscoveryBudget:
     """Persist starts before external execution; never create/reset authorization.
 
@@ -100,21 +75,56 @@ class DiscoveryBudget:
     def __init__(self, path: Path | None):
         self.path = path
 
-    def change(self, action):
+    def _read(self):
         if self.path is None or not self.path.is_file() or self.path.is_symlink():
             raise DiscoveryError("discovery_authorization_required", "An existing, explicitly authorized budget receipt is required; no automatic renewal.")
-        with _receipt_lock(self.path.with_suffix(".lock")):
+        try:
             data = json.loads(self.path.read_text(encoding="utf-8"))
-            if not isinstance(data.get("authorization"), str) or not data["authorization"].strip():
-                raise DiscoveryError("invalid_discovery_budget", "Discovery budget lacks explicit authorization.")
+        except (OSError, ValueError) as error:
+            raise DiscoveryError("invalid_discovery_budget", "Authorization receipt is unreadable; no execution.") from error
+        if not isinstance(data, dict) or not isinstance(data.get("authorization"), str) or not data["authorization"].strip():
+            raise DiscoveryError("invalid_discovery_budget", "Discovery budget lacks explicit authorization.")
+        return data
+
+    @staticmethod
+    def _validity(data):
+        expiry = data.get("expires_at")
+        if expiry is None:
+            if data.get("authorization_source") == "web":
+                raise DiscoveryError("invalid_discovery_budget", "Web authorization requires a finite expiry.")
+            return  # Preserve legacy receipts, never invent a new lifetime for them.
+        try:
+            deadline = datetime.fromisoformat(expiry)
+            if deadline.tzinfo is None:
+                raise ValueError("Timezone required")
+        except (TypeError, ValueError) as error:
+            raise DiscoveryError("invalid_discovery_budget", "Authorization expiry must include a timezone.") from error
+        if datetime.now(timezone.utc) >= deadline:
+            raise DiscoveryError("discovery_authorization_expired", "Source-discovery authorization has expired; a new explicit approval is required.")
+
+    def inspect(self):
+        self._read()  # Missing configuration must not create a lock or authorization.
+        with _receipt_lock(self.path.with_suffix(".lock")):
+            return self._read()
+
+    def ensure_active(self):
+        data = self.inspect()
+        self._validity(data)
+        return data
+
+    def change(self, action):
+        self._read()
+        with _receipt_lock(self.path.with_suffix(".lock")):
+            data = self._read()
             action(data)
-            temporary = self.path.with_name(self.path.name + "." + uuid4().hex + ".tmp")
-            with temporary.open("x", encoding="utf-8") as file: json.dump(data, file, ensure_ascii=False, indent=2)
-            os.replace(temporary, self.path)
+            atomic_json(self.path, data)
             return data
 
     def start(self, kind: str, identifier: str, query: str):
+        if kind not in {"search", "account"}:
+            raise DiscoveryError("invalid_discovery_budget", "Unknown Google execution role.")
         def reserve(data):
+            self._validity(data)
             if kind == "search":
                 cap, count = data.get("serpapi_search_http_start_cap"), data.get("serpapi_search_http_starts")
                 if not all(isinstance(x, int) and not isinstance(x, bool) and x >= 0 for x in [cap, count]):
@@ -131,6 +141,7 @@ class DiscoveryBudget:
         if kind not in {"native_discovery", "market_validation"}:
             raise DiscoveryError("invalid_discovery_budget", "Unknown authorized model role.")
         def reserve(data):
+            self._validity(data)
             cap, count = data.get("codex_turn_start_cap"), data.get("codex_turn_starts")
             role_key = "codex_" + kind + "_turn_starts"
             role_cap = data.get("codex_" + kind + "_turn_start_cap", 2 if kind == "native_discovery" else 1)
@@ -146,6 +157,7 @@ class DiscoveryBudget:
 
     def google_attempt(self, request_id: str):
         def reserve(data):
+            self._validity(data)
             attempts = data.setdefault("google_discovery_request_attempts", {})
             if attempts.get(request_id, 0):
                 raise DiscoveryError("discovery_query_limit", "This explicit discovery request already attempted Google; no MCP reconnect retry.")
@@ -204,7 +216,7 @@ class GoogleDiscovery:
         search_started = False
         try:
             # Check consent/cap before credential lookup or network I/O.
-            state = self.budget.change(lambda data: None)
+            state = self.budget.ensure_active()
             if state.get("serpapi_search_http_starts", 0) >= state.get("serpapi_search_http_start_cap", 0):
                 raise DiscoveryError("search_budget_exhausted", "Authorized Google search starts exhausted; no automatic renewal.")
             if self.request_id:

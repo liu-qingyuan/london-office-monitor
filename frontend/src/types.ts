@@ -39,6 +39,7 @@ export interface ResearchRecord {
   definition: string; denominator: string | null;
   source_ids: string[]; evidence_ids: string[]; caveats: string[];
   map_binding: null; reference_observation_ids: string[];
+  billing_period?: string | null; quality_status?: 'conflict'; conflict_record_ids?: string[];
   event?: {occurred_on: null; precision: string; occurrence_window: string;
     quantities: {measure: string; value: number; unit: string; display_value: string}[];
     snapshot_disposition: string};
@@ -46,12 +47,12 @@ export interface ResearchRecord {
 export interface ResearchComparison {
   id: string; topic_ids: SourceTopicId[]; label: string;
   previous_id: string; current_id: string; previous_value: number; current_value: number;
-  previous_window: string; current_window: string; change_value: number; change_unit: string;
+  previous_window: string; current_window: string; change_value: number | null; change_unit: string; status?: 'conflict';
   source_geography: string; source_ids: string[]; evidence_ids: string[]; warnings: string[];
 }
 export interface Research {
   data_kind: 'historical_research'; publication_status: 'admitted_with_caveats';
-  label: string; is_live: false; scope_note: string;
+  label: string; is_live: false; scope_note: string; intake_revision?: number;
   latest_update?: {admitted_at: string; source_checked_at: string; record_ids: string[]; source_ids: string[]; note: string};
   topics: {id: SourceTopicId; label: string; status: 'connected'; record_count: number}[];
   records: ResearchRecord[]; comparisons: ResearchComparison[];

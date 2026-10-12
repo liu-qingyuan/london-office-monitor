@@ -86,7 +86,7 @@ class PortableBudgetTests(unittest.TestCase):
             receipt = Path(directory) / "budget.json"
             receipt.write_text(json.dumps({"authorization": "fixture-only", "serpapi_search_http_start_cap": 1,
                 "serpapi_search_http_starts": 0}), encoding="utf-8")
-            with patch("london_office.discovery.os", SimpleNamespace(name="nt", replace=os.replace)), \
+            with patch("london_office.storage.os", SimpleNamespace(name="nt", replace=os.replace, fsync=os.fsync)), \
                 patch.dict(sys.modules, {"fcntl": None, "msvcrt": windows}):
                 DiscoveryBudget(receipt).start("search", "fixture-search", "伦敦 City")
             saved = json.loads(receipt.read_text(encoding="utf-8"))

@@ -9,6 +9,7 @@ import copy
 import hashlib
 import json
 import math
+import os
 import re
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -113,7 +114,8 @@ class Snapshot:
     Returned data are copies. Observation candidates are normalized, but selection,
     comparison and ambiguity resolution belong to the Market Module.
     """
-    def __init__(self, path: Path | None = None, geometry: Path | None = None):
+    def __init__(self, path: Path | None = None, geometry: Path | None = None, *, research_dir: Path | None = None):
+        self._research_dir = research_dir if research_dir is not None else (Path(os.environ.get("LONDON_RESEARCH_DIR", str(ROOT / "var/research"))) if path is None else None)
         self._data = json.loads((path or ROOT / "data/snapshot.json").read_text())
         self._geometry = json.loads((geometry or ROOT / "data/areas.geojson").read_text())
         if self._data.get("schema_version") != 1:
@@ -129,7 +131,7 @@ class Snapshot:
         self._research_sources = {}
         self._research_evidence = {}
         if self._research:
-            self._validate_research()
+            self._research_sources, self._research_evidence = self._validate_research(self._research)
         if self._geometry.get("type") != "FeatureCollection":
             raise ValueError("Geometry must be a FeatureCollection")
         for feature in self._geometry["features"]:
@@ -165,9 +167,8 @@ class Snapshot:
             if note["period"] not in self._periods or not set(note["area_ids"]) <= self._areas.keys():
                 raise ValueError("Report event references unknown geography or period")
 
-    def _validate_research(self):
-        """Validate the explicitly admitted context; it never becomes map observations."""
-        data = self._research
+    def _validate_research(self, data):
+        """Validate admitted context without mutating a shared snapshot or map observations."""
         if data.get("data_kind") != "historical_research" or data.get("publication_status") != "admitted_with_caveats" or data.get("is_live") is not False:
             raise ValueError("Research must be explicitly admitted historical context, not a live feed")
         def index(key):
@@ -177,19 +178,19 @@ class Snapshot:
                 raise ValueError(f"Duplicate IDs in research {key}")
             return result
         topics = index("topics")
-        self._research_sources = index("sources")
-        self._research_evidence = index("evidence")
+        sources = index("sources")
+        evidence = index("evidence")
         records = index("records")
         index("comparisons")
         index("exclusions")
-        for source in self._research_sources.values():
+        for source in sources.values():
             parsed = urlparse(source["url"])
             if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
                 raise ValueError("Admitted research source requires a public HTTPS URL")
             if source["id"] in self._sources and any(source[k] != self._sources[source["id"]][k] for k in ("url", "published_at")):
                 raise ValueError("Research source alias differs from the original source")
-        for item in self._research_evidence.values():
-            if item["source_id"] not in self._research_sources or not item["quote"].strip() or len(item["quote"]) > 600:
+        for item in evidence.values():
+            if item["source_id"] not in sources or not item["quote"].strip() or len(item["quote"]) > 600:
                 raise ValueError("Research requires known sources and bounded short excerpts")
         for row in records.values():
             if not row["topic_ids"] or not set(row["topic_ids"]) <= topics.keys():
@@ -208,14 +209,14 @@ class Snapshot:
                     raise ValueError("Missing, approximate and event scalars must not manufacture a number")
             else:
                 raise ValueError("Unknown research status")
-            if not row["source_ids"] or not set(row["source_ids"]) <= self._research_sources.keys() or not set(row["evidence_ids"]) <= self._research_evidence.keys():
+            if not row["source_ids"] or not set(row["source_ids"]) <= sources.keys() or not set(row["evidence_ids"]) <= evidence.keys():
                 raise ValueError("Research requires known source and evidence IDs")
-            excerpt_sources = {self._research_evidence[e]["source_id"] for e in row["evidence_ids"]}
+            excerpt_sources = {evidence[e]["source_id"] for e in row["evidence_ids"]}
             if not excerpt_sources <= set(row["source_ids"]):
                 raise ValueError("Research evidence and source bindings differ")
             if status != "missing" and excerpt_sources != set(row["source_ids"]):
                 raise ValueError("Every cited research source requires its own bound excerpt")
-            if status == "available" and Decimal(str(value)) not in set().union(*(_excerpt_numbers(self._research_evidence[e]["quote"]) for e in row["evidence_ids"])):
+            if status == "available" and Decimal(str(value)) not in set().union(*(_excerpt_numbers(evidence[e]["quote"]) for e in row["evidence_ids"])):
                 raise ValueError(f"research value {row['id']} is not present in its bound source excerpt")
             if not set(row["reference_observation_ids"]) <= {o["id"] for o in self._data["observations"]}:
                 raise ValueError("Research references an unknown original observation")
@@ -230,9 +231,10 @@ class Snapshot:
         for comparison in data["comparisons"]:
             if comparison["previous_id"] not in records or comparison["current_id"] not in records:
                 raise ValueError("Research comparison requires admitted baseline and current records")
-            for key, known in (("source_ids", self._research_sources), ("evidence_ids", self._research_evidence)):
+            for key, known in (("source_ids", sources), ("evidence_ids", evidence)):
                 if not set(comparison[key]) <= known.keys():
                     raise ValueError("Research comparison references unknown evidence")
+        return sources, evidence
 
     def _index(self, name):
         items = self._data[name]
@@ -266,18 +268,60 @@ class Snapshot:
     def notes(self, period: str, area: str | None = None) -> list[dict]:
         return copy.deepcopy([n for n in self._data["notes"] if n["period"] == period and (area is None or area in n["area_ids"])])
 
-    def research(self) -> dict:
-        """Both historical report years and qualified context, independent of map filters."""
-        return copy.deepcopy(self._research)
+    def research(self, *, include_overlay: bool = True) -> dict:
+        """Read one complete accepted revision; staged material is never market evidence."""
+        result = copy.deepcopy(self._research)
+        if not include_overlay or self._research_dir is None:
+            return result
+        path = self._research_dir / "state.json"
+        if not path.exists():
+            return result
+        try:
+            if path.is_symlink() or self._research_dir.is_symlink():
+                raise ValueError("Linked intake state")
+            state = json.loads(path.read_text(encoding="utf-8"))
+            if state["schema_version"] != 1 or state["data_kind"] != "research_intake_state" or type(state["revision"]) is not int or state["revision"] < 0:
+                raise ValueError("Invalid intake revision")
+            accepted = state["accepted"]
+            for key in ("records", "sources", "evidence"):
+                existing = {item["id"]: item for item in result[key]}
+                for item in accepted[key]:
+                    if item["id"] in existing:
+                        if existing[item["id"]] != item:
+                            raise ValueError("Accepted intake cannot overwrite prior records or provenance")
+                    else:
+                        result[key].append(item)
+                        existing[item["id"]] = item
+            result["intake_revision"] = state["revision"]
+            known = {item["id"]: item for item in result["records"]}
+            for conflict in state.get("conflicts", []):
+                identifiers = conflict["record_ids"]
+                if not set(identifiers) <= known.keys():
+                    raise ValueError("Unknown conflicting record")
+                for identifier in identifiers:
+                    record = known[identifier]
+                    record["quality_status"] = "conflict"
+                    record["conflict_record_ids"] = [other for other in identifiers if other != identifier]
+                    note = "Conflicting source-reported values retained separately; no single consensus value or automatic comparison."
+                    if note not in record["caveats"]:
+                        record["caveats"].append(note)
+            for topic in result["topics"]:
+                topic["record_count"] = sum(topic["id"] in record["topic_ids"] for record in result["records"])
+            self._validate_research(result)
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            raise ValueError("Accepted research state is invalid or unavailable; existing research has not been silently substituted.") from error
+        return result
 
     def geometry(self, area: str | None = None) -> dict:
         return {"type": "FeatureCollection", "features": copy.deepcopy([f for f in self._geometry["features"] if area is None or f["properties"]["area_id"] == area])}
 
     def source(self, source_id: str) -> dict:
-        if source_id not in self._sources and source_id not in self._research_sources:
+        research = self.research()
+        sources = {s["id"]: s for s in research.get("sources", [])}
+        if source_id not in self._sources and source_id not in sources:
             raise ValueError(f"Unknown source: {source_id}")
-        source = copy.deepcopy(self._sources.get(source_id, self._research_sources.get(source_id)))
-        source["evidence"] = [copy.deepcopy(e) for e in [*self._evidence.values(), *self._research_evidence.values()] if e["source_id"] == source_id]
+        source = copy.deepcopy(self._sources.get(source_id, sources.get(source_id)))
+        source["evidence"] = [copy.deepcopy(e) for e in [*self._evidence.values(), *research.get("evidence", [])] if e["source_id"] == source_id]
         return source
 
     def verify(self, source_id: str) -> dict:

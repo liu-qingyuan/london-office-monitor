@@ -32,7 +32,8 @@ test('same-size selections preserve the shared canvas while real layout changes 
   const insetCanvas = (await page.locator('.maplibregl-canvas').boundingBox())!;
   const insetMap = (await page.locator('#map').boundingBox())!;
   expect(insetCanvas.width).toBe(insetMap.width);
-  expect(insetMap.x).toBeGreaterThan(300);
+  expect(insetMap.x).toBe(0);
+  expect(insetMap.width).toBe(1600); // Information floats above, never shrinks the map.
   // Wait for the target view's actual tile traffic, not only the camera flag.
   await page.waitForLoadState('networkidle');
   // Retain only the settled segment of the observer's original array.

@@ -1,9 +1,14 @@
 import {MarketMap, type CameraState} from './map';
 import {mountMonitoring} from './monitoring';
+import {renderResearchCharts} from './research-charts';
+import {mountDiscoveryAuthorization} from './discovery-authorization';
+import {mountResearchIntake} from './research-intake';
 import type {ApiError, AreaId, Catalog, ChatResult, Comparison, DiscoveryResult, Evidence, Market, MetricId, Note, Observation, PeriodId, Research, ResearchComparison, ResearchRecord, Source, SourceCandidate, SourcePool, SourceTopicId, ToolCall} from './types';
 import {createI18n, applyLanguage, mountLanguageSelector, isMessageKey, dictionaries, type MessageKey, type MessageParams} from './i18n';
 import './style.css';
 import './i18n/style.css';
+import './dashboard.css';
+import './user-controls.css';
 import {localizeDescription} from './i18n/descriptions';
 
 const i18n = createI18n();
@@ -69,7 +74,7 @@ const app = $('#app');
 app.innerHTML = `
   <header class="masthead">
     <div class="masthead-left"><div class="brand"><span class="brand-symbol">${cityIcon}</span><div><span class="brand-overline">LONDON / MARKET INTELLIGENCE</span><strong><span class="brand-title">Office Monitor</span><span class="brand-dot">.</span></strong></div></div><div id="language-settings"></div></div>
-    <div class="header-context"><span class="snapshot-badge"><i></i><span class="snapshot-label">Historical evidence</span><b>2024 — 2025</b></span></div>
+    <div class="header-context"><span class="snapshot-badge"><i></i><span class="snapshot-current"><span class="snapshot-label">Historical evidence</span><b>2024 — 2025</b></span><span class="snapshot-map-period"></span></span></div>
   </header>
   <main class="workspace">
     <section class="map-panel" aria-labelledby="page-title">
@@ -102,7 +107,8 @@ app.innerHTML = `
       </form>
       <div id="agent-expansion" class="agent-expansion" hidden>
         <div class="agent-expansion-head"><div><h2 id="agent-heading">Evidence assistant</h2><p id="agent-context">Selected market context is included.</p></div><button type="button" id="close-agent" aria-label="Close Agent" title="Close assistant">${icon('<path d="m6 6 12 12M18 6 6 18"/>')}</button></div>
-        <div class="agent-operations"><label for="agent-mode">Mode</label><select id="agent-mode" aria-label="Assistant operation"><option value="market">Historical market</option><option value="discovery">Discover sources</option></select><button type="button" id="view-source-pool">View source pool</button></div>
+        <div class="agent-operations"><label for="agent-mode">Mode</label><select id="agent-mode" aria-label="Assistant operation"><option value="market">Historical market</option><option value="discovery">Discover sources</option></select><button type="button" id="view-source-pool">View source pool</button><button type="button" id="view-research-intake">Research intake</button></div>
+        <div id="discovery-authorization" hidden></div><div id="research-intake" hidden></div>
         <div class="suggestions"><button type="button" class="suggestion" data-question="What changed in City average prime achieved rent from 2024 year-end to 2025 year-end?">City rent change ↗</button><button type="button" class="suggestion" data-question="Which areas have no verified prime rent data at 2025 year-end, and why should they remain missing?">Coverage gaps ↗</button></div>
         <p class="agent-privacy">Uses reported evidence. Only sends a request when you ask.</p><div id="agent-result" aria-live="polite"></div>
       </div>
@@ -155,18 +161,48 @@ const localMapStatus = (): string => {
 };
 const map = new MarketMap($('#map'), area => selectArea(area), (area, x, y) => hover(area, x, y), status => { mapStatus = status; $('#map-state').textContent = localMapStatus(); renderCameraState(); }, state => renderCameraState(state));
 window.__officeMapDebug = {state: () => map.debug(), project: point => map.project(point)};
+const authorizationControls = mountDiscoveryAuthorization($('#discovery-authorization'), {api, t,
+  getQuestion: () => ($('#question') as HTMLInputElement).value,
+  onSearch: id => submitQuestion(id)});
+const intakeControls = mountResearchIntake($('#research-intake'), {api, t, onAdmitted: refreshAcceptedResearch});
+
+async function refreshAcceptedResearch(): Promise<void> {
+  // An explicitly admitted overlay changes research, not the map's historical data or camera.
+  marketCache.clear();
+  sessionId = undefined;
+  const sequence = ++viewSequence;
+  ++detailSequence;
+  const result = await getMarket(metric, period);
+  if (sequence !== viewSequence) return;
+  market = result;
+  loading = false;
+  marketError = null;
+  renderMarketPresentation(); // Deliberately no map.update/focus/start.
+  await loadDetail();
+}
+
+function renderCoverageBadge(): void {
+  const ids = new Set(market?.research?.latest_update?.record_ids ?? []);
+  const years = [...new Set(market?.research?.records.filter(record => ids.has(record.id) && record.status === 'available')
+    .flatMap(record => record.release_vintage?.match(/^\d{4}/)?.[0] ?? []) ?? [])].sort();
+  const badge = $('.snapshot-badge');
+  $('.snapshot-label').textContent = t(years.length ? 'brand.verifiedResearch' : 'brand.historicalEvidence');
+  badge.querySelector('b')!.textContent = years.length ? years.join(' · ') : '2024 — 2025';
+  $('.snapshot-map-period').textContent = `${t('brand.mapSnapshot')}: 2024 — 2025`;
+  badge.title = t('brand.coverageHint');
+}
 
 // These bindings are explicit UI slots, never a scan/replacement of source prose.
 function renderChrome(): void {
   const copy: readonly [string, MessageKey][] = [
-    ['.brand-overline','brand.overline'], ['.brand-title','brand.title'], ['.snapshot-label','brand.historicalEvidence'],
+    ['.brand-overline','brand.overline'], ['.brand-title','brand.title'],
     ['.map-heading .eyebrow','map.eyebrow'], ['#page-title','map.title'], ['.map-heading p','map.subtitle'],
     ['.legend-reported','map.legend.reported'], ['.legend-missing','map.legend.missing'], ['.legend-conflict','map.legend.conflict'], ['.legend-selected','map.legend.selected'],
     ['#reset-map span','map.overview'], ['.drag-instruction','map.drag'], ['.map-instructions small','map.gestures'],
     ['#map-info strong','map.backdropTitle'], ['#map-info p:first-of-type','map.backdropLimit'], ['.map-source-label','metadata.source'], ['.map-renderer-note','map.renderedWith'],
     ['label[for=question]','agent.questionLabel'], ['#agent-heading','agent.heading'], ['label[for=agent-mode]','agent.modeLabel'],
     ['#agent-mode option[value=market]','agent.mode.market'], ['#agent-mode option[value=discovery]','agent.mode.discovery'],
-    ['#view-source-pool','button.sourcePool'], ['.suggestion:first-child','agent.suggestion.rent'], ['.suggestion:last-child','agent.suggestion.gaps'],
+    ['#view-source-pool','button.sourcePool'], ['#view-research-intake','button.researchIntake'], ['.suggestion:first-child','agent.suggestion.rent'], ['.suggestion:last-child','agent.suggestion.gaps'],
     ['.inspector-heading .eyebrow','workspace.title'], ['#measure-filter .tiny-label','filter.measure'], ['.period-filter .tiny-label','filter.period'],
     ['.panel-divider .tiny-label','workspace.snapshotsAndSources'], ['#areas-heading','workspace.areaOverview']
   ];
@@ -194,6 +230,7 @@ function renderChrome(): void {
   $('#open-agent').title = t($('#agent-expansion').hidden ? 'button.openAssistant' : 'button.closeAssistant');
   renderAgentMode();
   renderCameraCaption();
+  renderCoverageBadge();
 }
 
 function renderLocalizedPresentation(): void {
@@ -204,6 +241,7 @@ function renderLocalizedPresentation(): void {
   renderChrome(); renderFilters(); renderMarketPresentation(); renderDetail();
   map.setLanguagePresentation(t('map.selectionSuffix'), getComputedStyle(document.documentElement).fontFamily);
   agentPresentation?.();
+  authorizationControls.render(); intakeControls.render();
   if (hovered && !$('#map-tooltip').hidden) hover(hovered.area, hovered.x, hovered.y);
   regions.forEach((root, index) => root.querySelectorAll<HTMLDetailsElement>('details').forEach((detail, position) => { detail.open = details[index]?.[position] ?? false; }));
   const refreshedScrolls = [$('#market-panel'),$('#agent-expansion'),...$('#agent-result').querySelectorAll<HTMLElement>('pre')];
@@ -214,8 +252,9 @@ function renderLocalizedPresentation(): void {
 function presentAgent(render: () => void): void { agentPresentation = render; render(); }
 function renderAgentMode(): void {
   const discovery = ($('#agent-mode') as HTMLSelectElement).value === 'discovery';
+  $('#discovery-authorization').hidden = !discovery || !$('#research-intake').hidden;
   $('.suggestions').hidden = discovery;
-  $('.agent-privacy').textContent = t(discovery ? 'agent.privacy.discovery' : 'agent.privacy.market');
+  $('.agent-privacy').textContent = t(discovery ? (catalog?.agent.discovery_configured === false ? 'agent.privacy.discoveryUnconfigured' : 'agent.privacy.discovery') : 'agent.privacy.market');
   ($('#question') as HTMLInputElement).placeholder = t(discovery ? 'agent.placeholder.discovery' : 'agent.placeholder.market');
 }
 function renderCameraCaption(): void {
@@ -245,10 +284,10 @@ function researchProvenance(sourceIds: string[], evidenceIds: string[], sources:
   }).join('') || `<p class="metadata">${tr('research.noSource')}</p>`}</div>`;
 }
 function researchRecordCard(record: ResearchRecord, sources: Source[], evidence: Evidence[]): string {
-  return `<article class="research-card" data-research-id="${escapeHtml(record.id)}"><span class="tiny-label">${escapeHtml(uiCode('research.kind', record.kind))} · ${escapeHtml(uiCode('status', record.status))}${record.reference_observation_ids.length ? ` · ${tr('research.primaryReference')}` : ''}</span><h4>${description(record.label)}</h4><strong class="research-value">${description(record.display_value)}</strong><dl class="research-metadata"><div><dt>${tr('research.sourceGeography')}</dt><dd>${description(record.source_geography)}</dd></div><div><dt>${tr('research.statisticalWindow')}</dt><dd>${description(record.statistical_window)}</dd></div><div><dt>${tr('research.releaseVintage')}</dt><dd>${escapeHtml(sourceDate(record.release_vintage))}</dd></div>${record.target_window !== null ? `<div><dt>${tr('research.forecastTarget')}</dt><dd>${description(record.target_window)}</dd></div><div><dt>${tr('research.forecastAsOf')}</dt><dd>${escapeHtml(sourceDate(record.forecast_as_of))}</dd></div>` : ''}<div><dt>${tr('research.definition')}</dt><dd>${description(record.definition)}</dd></div><div><dt>${tr('research.denominator')}</dt><dd>${description(record.denominator || t('status.notStated'))}</dd></div></dl>${record.event ? `<p class="metadata">${tr('research.eventOccurrence')}: ${description(record.event.occurrence_window)} · ${tr('research.precision')}: ${description(record.event.precision)} · ${tr('research.exactDay')}: ${tr('status.unknown')}</p>${record.event.quantities.map(item => `<p class="metadata">${description(item.measure)}: ${description(item.display_value)}</p>`).join('')}<p class="metadata">${description(record.event.snapshot_disposition)}</p>` : ''}${record.kind === 'forecast' ? `<p class="section-limit">${tr('research.forecastLimit')}</p>` : ''}${record.caveats.length ? `<p class="warning">${escapeHtml(record.caveats.map(value => localizeDescription(value, i18n.language)).join(' · '))}</p>` : ''}${researchProvenance(record.source_ids, record.evidence_ids, sources, evidence)}</article>`;
+  return `<article class="research-card" data-research-id="${escapeHtml(record.id)}"><span class="tiny-label">${escapeHtml(uiCode('research.kind', record.kind))} · ${escapeHtml(uiCode('status', record.quality_status === 'conflict' ? 'conflict' : record.status))}${record.reference_observation_ids.length ? ` · ${tr('research.primaryReference')}` : ''}</span><h4>${description(record.label)}</h4><strong class="research-value">${description(record.display_value)}</strong><dl class="research-metadata"><div><dt>${tr('research.sourceGeography')}</dt><dd>${description(record.source_geography)}</dd></div><div><dt>${tr('research.statisticalWindow')}</dt><dd>${description(record.statistical_window)}</dd></div><div><dt>${tr('research.releaseVintage')}</dt><dd>${escapeHtml(sourceDate(record.release_vintage))}</dd></div>${record.target_window !== null ? `<div><dt>${tr('research.forecastTarget')}</dt><dd>${description(record.target_window)}</dd></div><div><dt>${tr('research.forecastAsOf')}</dt><dd>${escapeHtml(sourceDate(record.forecast_as_of))}</dd></div>` : ''}<div><dt>${tr('research.definition')}</dt><dd>${description(record.definition)}</dd></div><div><dt>${tr('research.denominator')}</dt><dd>${description(record.denominator || t('status.notStated'))}</dd></div></dl>${record.event ? `<p class="metadata">${tr('research.eventOccurrence')}: ${description(record.event.occurrence_window)} · ${tr('research.precision')}: ${description(record.event.precision)} · ${tr('research.exactDay')}: ${tr('status.unknown')}</p>${record.event.quantities.map(item => `<p class="metadata">${description(item.measure)}: ${description(item.display_value)}</p>`).join('')}<p class="metadata">${description(record.event.snapshot_disposition)}</p>` : ''}${record.kind === 'forecast' ? `<p class="section-limit">${tr('research.forecastLimit')}</p>` : ''}${record.caveats.length ? `<p class="warning">${escapeHtml(record.caveats.map(value => localizeDescription(value, i18n.language)).join(' · '))}</p>` : ''}${researchProvenance(record.source_ids, record.evidence_ids, sources, evidence)}</article>`;
 }
 function researchComparisonCard(item: ResearchComparison, sources: Source[], evidence: Evidence[]): string {
-  return `<article class="research-card research-comparison" data-research-comparison-id="${escapeHtml(item.id)}"><span class="tiny-label">${tr('research.comparison')} · ${description(item.source_geography)}</span><h4>${description(item.label)}</h4><p class="metadata">${description(item.previous_window)} → ${description(item.current_window)}</p><strong class="research-value">${escapeHtml(item.change_value > 0 ? '+' : '')}${escapeHtml(formatNumber(item.change_value))} ${escapeHtml(item.change_unit)}</strong>${item.warnings.length ? `<p class="warning">${escapeHtml(item.warnings.map(value => localizeDescription(value, i18n.language)).join(' · '))}</p>` : ''}${researchProvenance(item.source_ids, item.evidence_ids, sources, evidence)}</article>`;
+  return `<article class="research-card research-comparison" data-research-comparison-id="${escapeHtml(item.id)}"><span class="tiny-label">${tr('research.comparison')} · ${description(item.source_geography)}</span><h4>${description(item.label)}</h4><p class="metadata">${description(item.previous_window)} → ${description(item.current_window)}</p><strong class="research-value">${item.change_value === null ? tr('status.notCalculated', {status: uiCode('status', item.status ?? 'conflict')}) : `${escapeHtml(item.change_value > 0 ? '+' : '')}${escapeHtml(formatNumber(item.change_value))} ${escapeHtml(item.change_unit)}`}</strong>${item.warnings.length ? `<p class="warning">${escapeHtml(item.warnings.map(value => localizeDescription(value, i18n.language)).join(' · '))}</p>` : ''}${researchProvenance(item.source_ids, item.evidence_ids, sources, evidence)}</article>`;
 }
 function researchBlock(topic: SourceTopicId, research: Research | undefined, sources?: Source[], evidence?: Evidence[]): string {
   if (!research) return `<p class="alert error">${tr('research.unavailable')}</p>`;
@@ -261,7 +300,7 @@ function researchBlock(topic: SourceTopicId, research: Research | undefined, sou
   const sourceList = sources ?? research.sources;
   const evidenceList = evidence ?? research.evidence;
   const update = research.latest_update;
-  const latestSection = update && latestRecords.length ? `<section data-latest-research-topic="${escapeHtml(topic)}"><div class="section-report-head"><h3>Latest verified update</h3></div><p class="metadata">Admitted: ${escapeHtml(update.admitted_at)} · Source checked: ${escapeHtml(update.source_checked_at)}</p><p class="section-limit">${escapeHtml(update.note)}</p>${latestRecords.map(item => researchRecordCard(item,sourceList,evidenceList)).join('')}</section>` : '';
+  const latestSection = update && latestRecords.length ? `<section data-latest-research-topic="${escapeHtml(topic)}"><div class="section-report-head"><h3>Latest verified update</h3></div><p class="metadata">Admitted: ${escapeHtml(update.admitted_at)} · Source checked: ${escapeHtml(update.source_checked_at)}</p><p class="section-limit">${escapeHtml(update.note)}</p>${renderResearchCharts(topic,research)}${latestRecords.map(item => researchRecordCard(item,sourceList,evidenceList)).join('')}</section>` : '';
   return `<div class="research-section" data-research-topic="${escapeHtml(topic)}">${latestSection}<div class="section-report-head"><h3>${escapeHtml(topicName(topic))} · ${tr('research.historical')}</h3><span>${tr('status.connected')}</span></div><p class="section-limit"><strong>${tr('research.scopeHeading')}.</strong> ${description(research.scope_note)} ${tr('research.scopeLimit')}</p>${historicalRecords.map(item => researchRecordCard(item,sourceList,evidenceList)).join('') || (!latestRecords.length ? `<p class="muted">${tr('research.noRecords')}</p>` : '')}${comparisons.map(item => researchComparisonCard(item,sourceList,evidenceList)).join('')}${exclusions.length ? `<div class="research-exclusions"><h4>${tr('research.exclusions')}</h4><p>${tr('research.evidenceLimit')}</p>${exclusions.map(item => `<p><strong>${description(item.label)}</strong> · ${description(item.reason)}</p>`).join('')}</div>` : ''}${research.warnings.length ? `<p class="warning">${escapeHtml(research.warnings.map(value => localizeDescription(value, i18n.language)).join(' · '))}</p>` : ''}</div>`;
 }
 function renderSection(): void {
@@ -294,6 +333,7 @@ function renderSection(): void {
   if (activeSection === 'news') mountMonitoring(board);
 }
 function renderMarketPresentation(): void {
+  renderCoverageBadge();
   const status = $('#global-status');
   status.className = catalogError || marketError ? 'alert error' : loading ? 'alert loading' : '';
   status.textContent = catalogError ? t('error.catalog', {detail: catalogError}) : marketError ? t('error.market', {detail: marketError}) : loading ? t('loading.marketValues') : '';
@@ -527,9 +567,18 @@ $('#view-source-pool').addEventListener('click', async () => {
   } catch (error) { const detail = message(error); presentAgent(() => { $('#agent-result').innerHTML = `<p class="alert error">${escapeHtml(detail)}</p>`; }); }
   finally { chatBusy = false; }
 });
-$('#agent-mode').addEventListener('change', renderAgentMode);
-$('#chat-form').addEventListener('submit', async event => {
-  event.preventDefault();
+$('#view-research-intake').addEventListener('click', () => {
+  setAgentExpanded(true);
+  $('#research-intake').hidden = !$('#research-intake').hidden;
+  renderAgentMode();
+  if (!$('#research-intake').hidden) void intakeControls.refresh();
+});
+$('#agent-mode').addEventListener('change', () => {
+  $('#research-intake').hidden = true;
+  renderAgentMode();
+  if (($('#agent-mode') as HTMLSelectElement).value === 'discovery') void authorizationControls.refresh();
+});
+async function submitQuestion(authorizationId?: string): Promise<void> {
   if (chatBusy) return;
   const input = $('#question') as HTMLInputElement;
   const question = input.value.trim();
@@ -537,6 +586,15 @@ $('#chat-form').addEventListener('submit', async event => {
   const submittedContext = {area_id: selected, metric, period};
   const discoveryMode = ($('#agent-mode') as HTMLSelectElement).value === 'discovery';
   setAgentExpanded(true);
+  if (discoveryMode && !authorizationId) {
+    if (!authorizationControls.canSearch()) {
+      $('#research-intake').hidden = true;
+      renderAgentMode();
+      presentAgent(() => { $('#agent-result').innerHTML = `<p class="alert error" role="alert">${tr('authorization.notActive')}</p>`; });
+      return; // Arrow/Enter never approves or renews an allowance.
+    }
+    authorizationId = authorizationControls.currentId() ?? undefined;
+  }
   $('.agent-shell').classList.remove('has-answer');
   chatBusy = true;
   $('.agent-shell').classList.add('is-running');
@@ -546,7 +604,7 @@ $('#chat-form').addEventListener('submit', async event => {
   presentAgent(() => { $('#agent-result').innerHTML = `<p class="alert loading" role="status">${tr('loading.assistant')}</p>`; });
   try {
     if (discoveryMode) {
-      const response = await api<DiscoveryResult>('/api/discovery', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({question, ...(catalog?.discovery_topics ? {topic_ids: catalog.discovery_topics.map(topic => topic.id)} : {}), context: {area_id: submittedContext.area_id}})});
+      const response = await api<DiscoveryResult>('/api/discovery', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Office-User-Action': 'confirm'}, body: JSON.stringify({question, ...(catalog?.discovery_topics ? {topic_ids: catalog.discovery_topics.map(topic => topic.id)} : {}), context: {area_id: submittedContext.area_id}, authorization_id: authorizationId})});
       presentAgent(() => renderDiscovery(response, question, submittedContext.area_id));
     } else {
       const response = await api<ChatResult>('/api/chat', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({question, ...(sessionId ? {session_id: sessionId} : {}), context: submittedContext})});
@@ -556,10 +614,15 @@ $('#chat-form').addEventListener('submit', async event => {
     }
   } catch (error) {
     const detail = message(error);
+    if (detail.startsWith('research_changed:')) sessionId = undefined;
     const login = /login|not.logged|not_authenticated|authentication|unauthorized|subscription.auth/i.test(detail);
-    presentAgent(() => { $('#agent-result').innerHTML = `<p class="alert error" role="alert">${escapeHtml(detail)}${login ? `<br>${tr('error.loginHint', {command: 'uv run london-office login'})}` : ''}</p>`; });
-  } finally { chatBusy = false; $('.agent-shell').classList.remove('is-running'); $('#chat-form').setAttribute('aria-busy', 'false'); if (button) button.disabled = false; }
-});
+    presentAgent(() => { $('#agent-result').innerHTML = `<p class="alert error" role="alert">${escapeHtml(uiCode('error', detail.split(':', 1)[0] ?? detail, detail))}${login ? `<br>${tr('error.loginHint', {command: 'uv run london-office login'})}` : ''}</p>`; });
+  } finally {
+    chatBusy = false; $('.agent-shell').classList.remove('is-running'); $('#chat-form').setAttribute('aria-busy', 'false'); if (button) button.disabled = false;
+    if (discoveryMode) await authorizationControls.refresh(); // Read counters only; never a retry or renewal.
+  }
+}
+$('#chat-form').addEventListener('submit', event => { event.preventDefault(); void submitQuestion(); });
 $('.suggestions').querySelectorAll<HTMLButtonElement>('button').forEach(button => button.addEventListener('click', () => {
   const input = $('#question') as HTMLInputElement;
   input.value = button.dataset.question ?? '';

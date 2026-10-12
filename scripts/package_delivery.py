@@ -12,7 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIRS = {"london_office", "frontend", "data", "docs", "scripts", "skills", "tests"}
-ROOT_FILES = {"README.md", "AGENTS.md", ".gitignore", "pyproject.toml", "uv.lock", "requirements.lock.txt", "GLOSSARY.md"}
+ROOT_FILES = {"README.md", "README.zh-CN.md", "AGENTS.md", ".gitignore", "pyproject.toml", "uv.lock", "requirements.lock.txt", "GLOSSARY.md"}
 FORBIDDEN = {".git", ".venv", ".auth", ".codex", "node_modules", ".pw-browsers", ".browser", "var", "raw", "dist", "__pycache__", "artifacts", "test-results", "playwright-report"}
 # Non-code inputs are individually reviewed; arbitrary JSON/logs/receipts are never collected.
 SNAPSHOT_FILES = {"data/README.md", "data/snapshot.json", "data/areas.geojson",
@@ -22,18 +22,39 @@ SNAPSHOT_FILES = {"data/README.md", "data/snapshot.json", "data/areas.geojson",
                   "presentation/kimi-update-zh-CN.md", "presentation/kimi-update-en.md",
                   "presentation/materials/map-zh-Hans.png", "presentation/materials/ai-answer-historical.png",
                   "presentation/materials/source-discovery-historical.png",
-                  "presentation/materials/official-monitoring-desktop.png", "presentation/materials/official-monitoring-mobile.png"}
+                  "presentation/materials/official-monitoring-desktop.png", "presentation/materials/official-monitoring-mobile.png",
+                  "presentation/materials/research-charts-desktop.png", "presentation/materials/research-charts-mobile.png",
+                  "presentation/materials/research-share-desktop.png", "presentation/materials/product-floating-desktop.png",
+                  "presentation/materials/intake-demo-synthetic-desktop.png", "presentation/materials/intake-form-mobile.png"}
 SOURCE_SUFFIXES = {".py", ".ts", ".mts", ".mjs", ".js", ".css", ".html", ".md"}
 START_HERE = """# London Office Monitor — development snapshot
 
 This ZIP supplies the runnable Python Agent PoC source, Kimi prompt and reviewed screenshot materials.
 All finished presentations are made and modified only in Kimi, downloaded by the user to
 artifacts/presentation/kimi-final/, and supplied separately from this code ZIP.
-See presentation/README.md for the five genuine material images and their dated provenance.
+See presentation/README.md for eleven reviewed UI images and their dated provenance,
+including the fullscreen-map floating-panel hero, desktop/mobile research charts and share ring.
+The intake demo uses explicitly synthetic test material, not market observations. These are existing
+real-API UI captures, not fresh complete product acceptance or live-model evidence.
 New deck: presentation/kimi-prompt-zh-CN.md or presentation/kimi-prompt-en.md.
 Revise your existing Kimi deck: presentation/kimi-update-zh-CN.md or presentation/kimi-update-en.md,
-plus the two official-monitoring screenshots. The old deck must be uploaded to Kimi separately.
+plus the dashboard and intake-form screenshots. The synthetic admitted-batch image is an
+optional workflow example with a prominent test label, never market evidence. Older
+monitoring/AI/discovery images are optional historical context. Upload the old deck separately.
 No PPTX, slide PDF or HTML deck is generated or bundled by this command.
+
+## New finite web consent and original-material intake
+
+Discover sources now lets the user explicitly set Google starts, subscription caller turns
+and validity, then authorise and search in the browser. It still needs the recipient's own
+Codex subscription login and free SerpAPI key; reading status never starts a search. Approval
+creates an independent finite local grant, not a purchased credit or automatic renewal.
+Research intake accepts the recipient's own PDF/HTML/TXT and scalar fields/excerpts. Staging
+is not admission: separately approve the immutable batch's content revision. Eligible facts
+enter a dedicated local accepted overlay; gaps cannot be bypassed and conflicts keep their
+source values. Uploading is not online publisher authentication or AI report extraction.
+No user files, local overlays, grants, prior receipts or authors' authorisation are bundled.
+Read README.md (English) or README.zh-CN.md (Chinese) for the operations and boundaries.
 
 ## Added monitoring capabilities and limits
 
@@ -55,7 +76,8 @@ This is the current working-tree snapshot, including uncommitted/new public sour
 Packaging does not run product tests, revalidate a live model, or upload/share anything.
 Verification remains Not yet verified for this snapshot, not inherited from older runs.
 Historical UI images and reviewed replay fixtures are materials/test inputs, not fresh model evidence.
-See README.md and docs/verification.md for dated evidence and limitations.
+Read README.md (English) or README.zh-CN.md (简体中文) for setup, explicit search authorization and troubleshooting.
+See docs/verification.md for dated evidence and limitations.
 Historical market excerpts are not a live market feed; missing values are not zero.
 
 ## Run and interact without a model

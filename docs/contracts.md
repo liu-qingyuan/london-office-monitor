@@ -29,7 +29,7 @@ Market 保留 JSON/GeoJSON 快照、JSONL 工具证据及既有 HTTP 入口。�
 }
 ```
 
-`agent.enabled` 表示服务器允许使用该 Adapter，不意味着已经登录或完成模型实测。`agent.discovery_configured` 表示已指定候选发现预算文件，不证明登录、剩余配额或实测通过。`discovery_topics:[{id,label}]` 来自 Data 的 topic 目录。启动 UI 不自动消耗模型额度。
+`agent.enabled` 表示服务器允许使用该 Adapter，不意味着已经登录或完成模型实测。`agent.discovery_configured` 表示有网页授权状态或legacy预算配置，不证明有效、已登录、剩余配额或实测通过；余额以只读授权状态入口为准。`discovery_topics:[{id,label}]` 来自 Data 的 topic 目录。启动 UI 不自动消耗模型额度。
 
 ## GET /api/market?metric=prime_rent&period=2025-YE&area=city
 
@@ -48,7 +48,7 @@ HTTP 结果中的数字、比较及事实面板都由同一 Python Market Module
 
 ## 八维研究：query／brief 的 research
 
-`research` 为同一快照里的已接纳历史研究：`data_kind:"historical_research", publication_status:"admitted_with_caveats", label, is_live:false, scope_note, topics, records, comparisons, sources, evidence, exclusions, warnings`。topics 为八维ID/名称/connected状态/引用记录数；共同事实可引用多个topic，不将各topic计数相加为独立观察数。
+`research` 为版本化快照与明确批准的独立overlay合并后的已接纳历史研究：`data_kind:"historical_research", publication_status:"admitted_with_caveats", label, is_live:false, scope_note, topics, records, comparisons, sources, evidence, exclusions, warnings`。topics 为八维ID/名称/connected状态/引用记录数；共同事实可引用多个topic，不将各topic计数相加为独立观察数。
 
 用户随后明确要求及时更新已核事实，本批增量接纳12条2026记录而保留原120条。可选 `latest_update:{admitted_at,source_checked_at,record_ids,source_ids,note}` 只标记此次已核接纳集合及真实原文检查时间；不声称所有维度实时覆盖，也不以今日索引检查时间替代原文检查。UI每topic按record_ids将这些记录置顶一次，历史记录原序保留；新标题／说明保持原文，旧三语覆盖不变。Bank Rate决定点、GDP三个月和LFS滚动窗口，Savills September版的August月度／YTD，以及Grade A／prime、未知计费周期分别保留。`historical_research`／`is_live:false`、YE地图periods和六工具仍不变。
 
@@ -59,7 +59,8 @@ HTTP 结果中的数字、比较及事实面板都由同一 Python Market Module
 - comparison：`id, topic_ids, label, previous_id, current_id, previous_value, current_value, previous_window, current_window, change_value, change_unit, source_geography, source_ids, evidence_ids, warnings`。本轮仅选择三个同机构可比较实际/描述性系列，Python重新计算相对百分比或百分点；不相加regional rounded displays，不算分类措辞变化的68→77质量空间趋势，不算不同预测目标的同比。
 - event额外含occurred_on（本轮null）、precision、occurrence_window、带独立measure/unit的quantities以及snapshot_disposition；公告日不是签署日，既有Exchange Square notes的补证据不新增净事件计数。
 - sources/evidence嵌套在research，避免污染旧的所选区域来源列表。受明确许可限制的六条背景字段与缺摘录支持的一条Midtown数量只保留exclusions，值和引文未发布。
-- 新研究通过源码快照明确更新/重启生效，不从ignored dossiers或候选池在运行中自动接纳；没有后台自动发布。
+- 版本化snapshot修改仍需重启；单独授权的研究批次通过下述ResearchIntake账本动态读取，附加`intake_revision`。不从metadata池或未批准批次发布，不修改地图observation或geometry。
+- overlay record可有`billing_period`、`quality_status:"conflict"`及`conflict_record_ids`。真冲突保留各报告值与来源；相关research comparison返回`status:"conflict"`、`change_value:null`和警告，不择单一共识值。
 
 ## 可视化导航
 
@@ -83,7 +84,7 @@ HTTP 结果中的数字、比较及事实面板都由同一 Python Market Module
 
 ## 允许的 Python 业务工具
 
-此处权限约束的是应用里的普通市场问答，不是编码 Agent或下述显式发现 profile；开发角色与任务范围见根 `AGENTS.md`。本轮八维静态接纳已获用户明确授权；未来自动接纳／自动发布仍没有授权。
+此处权限约束的是应用里的普通市场问答，不是编码 Agent或下述显式发现 profile；开发角色与任务范围见根 `AGENTS.md`。八维基线及网页有限本批接纳已获用户授权；未来无人值守、无限自动发布仍没有授权。用户批准API不注册为模型工具。
 
 `market_catalog()`、`market_query(area, metric, period)`、`compare_periods(area, metric, previous_period, current_period)`、`market_brief(period, area?)`、`source_details(source_id)`、`verify_source(source_id)`。只读，通过项目内 MCP 暴露；精确批准这些工具，禁止 shell、web search、个人 MCP、外部 Agent。
 
@@ -110,18 +111,39 @@ Candidate 为 `{id,url,title,snippet,date_hint,content_basis:"search_metadata",v
 
 ## 显式来源发现：POST /api/discovery
 
-输入 `{question,topic_ids?:string[],context?:{area_id?:string}}`，不接受 key、预算路径、session_id 或任意工具名。问题 1–2000 字符，topic 1–8 项、已知 ID；默认八项意图，UI 使用 Data 目录。只有明确提交 Discover sources 才启动；普通问答、missing、切区、打开导航／候选池或后台不会触发。关闭面板不取消已提交请求。
+输入 `{question,topic_ids?:string[],context?:{area_id?:string},authorization_id?:string}`，不接受key、预算路径、session_id或任意工具名。网页grant必须绑定具体authorization_id，不能省略后自动选择活动额度；无ID仅兼容已有legacy配置。带ID的网页请求要求下述精确同源用户操作守卫。问题 1–2000 字符，topic 1–8 项、已知 ID；默认八项意图，UI 使用 Data 目录。只有明确提交 Discover sources 才启动；普通问答、missing、切区、打开导航／候选池或后台不会触发。关闭面板不取消已提交请求。
 
 同一 CodexAdapter 创建临时发现 thread，不用于普通会话。原市场六工具保留 Web Search disabled；发现 profile 只允许 `google_search_sources(query)` 和 native Web Search，禁 shell／代码工具／个人 MCP／多 Agent。Google 只调用 SerpAPI Google endpoint、第一页 index metadata；保留完整响应，不取固定前 N 条。确认 Active Free Plan、价格为零、可用额度后才发 search，拒绝未知／付费配额、重定向、自动重试、升级及 endpoint fallback。不自动获取源网页全文或商业 PDF。
 
-`LONDON_DISCOVERY_BUDGET_FILE` 必须指向已有、另行获准的本仓库专用 receipt；不会自动创建、续约或重置。当前 receipt 上限 Google 8 个搜索 HTTP starts、Codex 3 个调用方轮启动（native discovery 2＋market validation 1）；失败／超时占已开始额度，原生内部 HTTP、token／费用与覆盖未知。同一配置的普通 chat 验证也计入 market 子额度。Google 每个发现请求一次尝试，跨 MCP 重连用 receipt 保留限制；原生 search-only，最多两个可观察工具项／query，越界通知触发 interrupt，不能声称阻止了未知内部请求或强制两工具选择。原生 results 是 SDK 可见不透明 metadata，不是 Google 原始 SERP。
+搜索使用本次绑定的网页grant或已有、另行获准的legacy `LONDON_DISCOVERY_BUDGET_FILE`；不会被动创建、续约或重置。历史receipt的Google8／Codex3（native2＋market1）不是本轮可用额度。失败／超时占已开始额度，原生内部HTTP、token／费用与覆盖未知。网页grant的普通市场模型子额度为0，不能扩大问答权限；legacy配置的普通chat仍计入其market子额度。Google 每个发现请求一次尝试，跨 MCP 重连用 receipt 保留限制；原生 search-only，最多两个可观察工具项／query，越界通知触发 interrupt，不能声称阻止了未知内部请求或强制两工具选择。原生 results 是 SDK 可见不透明 metadata，不是 Google 原始 SERP。
 
 结果 `{schema_version:1,data_kind:"source_discovery",run_id,status,assessment,assessment_basis:"ai_generated_source_screening",selected_candidate_ids,pool,provider_states,tool_calls,warnings}`。status 为 completed_metadata_only（本轮两个通路都有实际完成与候选 metadata）或 partial；原生 provider state 包含可观察开始／完成项数、捕获 URL 出现数以及 `http_request_count:null`。筛选 URL 必须绑定本轮实际捕获的 metadata，AI assessment 保持定性；完整库存与模型选中集合分开。工具失败、权限越界、无法绑定回答、超时／配额错误都保留实际证据，不冒充市场无资料，不更新 observations／几何或授予发布权限。
+
+## 网页搜索授权：GET／POST /api/discovery/authorization
+
+GET只读，不查凭据／账户，不启动模型／搜索。返回`{schema_version:1,status,authorization_id,authorization_source,authorized_at,expires_at,google:{cap,starts,remaining},model_turns:{cap,starts,remaining},warnings}`。status为not_configured／active／exhausted／expired／invalid；source为web／legacy／null。未配置不是额度耗尽；损坏不回退到旧余额。legacy无expiry如实显示，不推断无限期。两条执行通路有可用次数且未过期才是active；caller turns不是原生内部HTTP、token或费用硬上限。
+
+POST为用户明确操作，输入`{google_cap,model_turn_cap,valid_for_minutes,request_id}`。严格正整数，各次数1–100、期限1–1440分钟，request_id为1–100位字母／数字／下划线／连字符。创建独立有限UTC授权，不覆盖旧receipt；同request_id同参数重放返回原授权，不重置计数，不激活新的额度；参数变更报409。网页caller turns按该grant约束，不因普通进程轮次计数而要求重启。授权并搜索由UI顺序POST授权、再提交绑定ID的discovery，不自动重试失败操作。Google凭据读取、账户／搜索启动以及SDK执行前都检查后端有效期；已经开始的请求可完成并保存证据，不退回额度。
+
+新写入口（搜索授权、带ID发现、研究暂存／授权／决定）必须是精确本机同源的`application/json`请求，带`X-Office-User-Action: confirm`。不接受其他本机端口／别名origin；开发代理保留浏览器Host而不放宽后端守卫。这是localhost单用户操作边界，不是公网多用户认证。
+
+## 原材料研究批次：/api/research/batches
+
+用户上传不等于机构真实性认证，不新增联网抓取或模型提取。支持PDF／HTML／HTM／TXT，每文件及整批原bytes合计≤5,000,000，单批1–20份原材料和1–100个候选；超限在捕获归档／发布前拒绝。POST只暂存`{documents,candidates}`；document及candidate精确字段见[接纳设计](architecture/web-authorization-and-intake.md)。不接受客户端本机路径、verified标志或metadata代替原文。后端捕获实际bytes／SHA-256，复用read_document；引文及数值＋单位anchor必须匹配原材料。首切片只处理直接报告的scalar统计／存量／实际流量；同时检查原材料相邻上下文、完整数值句、section与context_quote中的预测标记，不能用截短引文将预测伪装actual，不宣称forecast／event提取。
+
+GET列表、GET`/{batch_id}`返回`{schema_version:1,data_kind:"research_candidate_batches",revision,batches:[{id,content_revision,created_at,authorized_at,candidates}]}`，不暴露原bytes或本机路径。candidate含`id,record,sources,evidence,assessment:{status,reasons},state`；assessment为eligible／needs_confirmation／blocked／duplicate，reason含code、message及related_record_ids。原材料source标为`user_supplied_document_excerpt_not_live`，evidence保存document_sha256、section、quote、context_quote及匹配basis，不冒称在线核验。
+
+POST`/{batch_id}/authorize`输入`{content_revision}`（不可变批次的SHA-256字符串），单独批准本批：eligible自动接纳、needs_confirmation等待用户、blocked禁止放行、duplicate不重发。先整体识别同批冲突，不先自动接纳首项。同口径身份包括metric／kind／地域／统计窗口／definition／unit／denominator／billing_period；release_vintage另保留，不自动判定修订或覆盖旧版。不同单位／窗口不合并，可疑定义不自动等同。修改内容须新批授权；stale revision报409，重放批准不重复发布。
+
+POST`/{batch_id}/decisions`输入`{content_revision,candidate_id,decision:"accept"|"reject",reason}`（理由1–600字符）。仅本批已授权项可处理；UI仅needs_confirmation提供人工操作。人工确认再次核验原材料，不得放行缺原文、不支持数值／类型、缺必要身份或duplicate。接纳真冲突时保留各报告值、冲突标签与相关ID，不自动覆盖旧值或比较。结论不可反转；重放同一决定不重复写入。
+
+账本`{schema_version:1,data_kind:"research_intake_state",revision,batches,accepted:{records,sources,evidence},conflicts}`独立、原子保存，conflicts只引用baseline或已接纳记录。Data每次读取并校验一份完整accepted版本；Market／六工具沿原Interface获取。UI接纳后清市场缓存、重读研究，不重建／缩窄地图或发模型请求；旧回答保持历史。已接纳内容改变后的旧模型会话报research_changed，执行中版本改变也不接受混合回答，不自动重试。
 
 ## 持久化与认证
 
 - `data/snapshot.json`：版本化 source/evidence/observations/notes/catalog 与本轮已接纳 research；`data/areas.geojson`：独立的示意选择几何。
 - `var/runs/*.jsonl`：Python 工具执行证据；发现的 typed SDK journal、输入、响应／失败在 `var/runs/discovery/<run>/`。不提交、不放入默认发布包。测试证据经审阅后另行导出脱敏版本。
+- `var/discovery/authorizations/`：有限网页receipt及active幂等索引，旧计数保留；`var/research/documents/`与`state.json`：用户原bytes及独立批次／accepted账本。可通过专用`LONDON_RESEARCH_DIR`指定；不提交／打包原材料或运行授权。
 - `var/discovery/records/*.json`：schema_version=1 的不可覆盖来源运行记录（data_kind=source_candidate_run、recorded_at、run、occurrences），发布完整记录后才可读；`evidence/<run>/` 保存已脱敏请求、Google 完整 metadata JSON 与执行证据。库存每次重读，不需要 Market 重启；与正式 snapshot／前端 Market 缓存独立。可用 `LONDON_DISCOVERY_DIR` 指向专用运行目录，不引入数据库。
 - SerpAPI key 只由后端处理。直接 CLI 与应用父后端优先使用显式 `SERPAPI_API_KEY`；仅 macOS 可复用既有专用 Keychain service，不在其他系统运行 macOS 命令、不查找其他个人凭据或配置。应用发现 MCP 通过请求级认证 loopback JSON 桥接调用父后端的 Google 工具，实际 key 不进入 SDK 配置、MCP 环境／命令参数、模型或 UI，`SERPAPI_API_KEY` 仍显式清空。桥接绑定 `127.0.0.1` 动态端口，仅接受有界 `{query}`，短期 capability 不能获取 key、改变父后端拥有的预算／topic／context／request ID；禁止代理、重定向与自动重试。启动失败、timeout、完成／异常与 Adapter.close 均关闭监听，已开始的外部调用不恢复额度。普通市场 profile 不使用桥接，HTTP／业务工具 DTO 保持不变。Free quota 只保存白名单字段；原始 account body／邮箱不传给模型，JSON／URL 编码的 key 回显仍在保存／返回前拒绝。
 - receipt JSON 继续使用现有字段与原子替换，明确 UTF-8；内部 `.lock` 在 POSIX 使用 `fcntl`、原生 Windows 使用 `msvcrt` 单字节互斥。不删除锁、自动生成或重置 receipt 来获得平台兼容。候选池需要支持硬链接的本地文件系统（通常为 macOS／Linux 本地文件系统或 Windows NTFS），保留不可覆盖、完整记录才可见的语义。

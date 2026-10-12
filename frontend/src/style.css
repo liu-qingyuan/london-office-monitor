@@ -273,7 +273,7 @@ cite { display: block; font-size: 8px; color: #a8c3d8; font-style: normal; margi
 #close-agent svg { width: 13px; height: 13px; }
 .agent-privacy { margin-top: 13px; color: #a7c0d7; font-size: 9px; line-height: 1.6; }
 .agent-operations { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 12px 0; font-size: 10px; color: #bdd9ed; }
-.agent-operations select, #view-source-pool { border: 1px solid #c0ddff24; border-radius: 10px; background: #223c53; color: #d2e9fa; padding: 8px; font: inherit; }
+.agent-operations select, #view-source-pool, #view-research-intake { border: 1px solid #c0ddff24; border-radius: 10px; background: #223c53; color: #d2e9fa; padding: 8px; font: inherit; }
 .source-pool-summary { font-size: 12px; color: #d5ebf6; margin: 16px 0 8px; }
 .source-topics { display: grid; grid-template-columns: repeat(auto-fit,minmax(150px,1fr)); gap: 8px; margin: 16px 0; }
 .source-topic { padding: 9px; border: 1px solid var(--line); border-radius: 10px; font-size: 10px; }

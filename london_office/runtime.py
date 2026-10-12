@@ -24,6 +24,7 @@ from .tools import BusinessTools
 from .source_pool import SourcePool, TOPICS
 from .discovery import DiscoveryBudget, DiscoveryError, DiscoveryTools, GoogleDiscovery
 from .discovery_bridge import GoogleSearchBridge
+from .authorization import DiscoveryAuthorization
 
 
 class AgentError(Exception):
@@ -194,6 +195,7 @@ class _Session:
     trace: Path
     lock: threading.Lock = field(default_factory=threading.Lock)
     bridge: GoogleSearchBridge | None = None
+    research_revision: str | None = None
 
     def close(self):
         try:
@@ -212,6 +214,22 @@ class CodexAdapter:
         self._lock = threading.Lock()
         self._turns = 0
         self._data_hash = hashlib.sha256((ROOT / "data/snapshot.json").read_bytes()).hexdigest()
+        self.authorization = DiscoveryAuthorization(self.settings.discovery_dir / "authorizations", self.settings.discovery_budget_file)
+
+    def _research_revision(self):
+        path = self.settings.research_dir / "state.json"
+        state = {"accepted": {"records": [], "sources": [], "evidence": []}, "conflicts": []}
+        if path.exists():
+            try:
+                if path.is_symlink() or self.settings.research_dir.is_symlink():
+                    raise ValueError("Linked research state")
+                raw = json.loads(path.read_text(encoding="utf-8"))
+                if raw["schema_version"] != 1 or raw["data_kind"] != "research_intake_state":
+                    raise ValueError("Invalid state")
+                state = {"accepted": raw["accepted"], "conflicts": raw.get("conflicts", [])}
+            except (OSError, ValueError, KeyError) as error:
+                raise AgentError("research_unavailable", "Accepted research state is unavailable; no model request started.") from error
+        return hashlib.sha256(json.dumps(state, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
 
     def _open(self):
         from openai_codex import Codex
@@ -311,11 +329,11 @@ class CodexAdapter:
                 names = ["google_search_sources"]
                 args += ["--discovery-bridge"]
                 bridge = GoogleSearchBridge(DiscoveryTools(GoogleDiscovery(
-                    SourcePool(self.settings.discovery_dir), self.settings.discovery_budget_file,
+                    SourcePool(self.settings.discovery_dir), discovery["budget_file"],
                     request_id=discovery["request_id"]), topic_ids=discovery["topic_ids"],
                     context=discovery.get("context") or None))
                 config["web_search"] = "live"
-            mcp_env = {"LONDON_DISCOVERY_DIR": str(self.settings.discovery_dir), "SERPAPI_API_KEY": "",
+            mcp_env = {"LONDON_DISCOVERY_DIR": str(self.settings.discovery_dir), "LONDON_RESEARCH_DIR": str(self.settings.research_dir), "SERPAPI_API_KEY": "",
                 "PYTHONUTF8": "1", "LONDON_GOOGLE_BRIDGE_URL": "", "LONDON_GOOGLE_BRIDGE_TOKEN": ""}
             if bridge:
                 mcp_env.update(bridge.mcp_env)
@@ -325,7 +343,7 @@ class CodexAdapter:
             thread = codex.thread_start(model=self.settings.model, cwd=str(ROOT), ephemeral=True,
                 sandbox=Sandbox.read_only, approval_mode=ApprovalMode.deny_all,
                 base_instructions=instructions, config=config)
-            return _Session(identifier, codex, thread, trace, bridge=bridge)
+            return _Session(identifier, codex, thread, trace, bridge=bridge, research_revision=self._research_revision())
         except Exception:
             try:
                 codex.close()
@@ -347,7 +365,7 @@ class CodexAdapter:
                 raise AgentError("invalid_context", "Unknown map context field.")
             from .market import Market
             try:
-                Market().query(**{("area" if k == "area_id" else k): v for k, v in context.items()})
+                Market(research_dir=self.settings.research_dir).query(**{("area" if k == "area_id" else k): v for k, v in context.items()})
             except ValueError as error:
                 raise AgentError("invalid_context", str(error)) from error
         with self._lock:
@@ -357,6 +375,12 @@ class CodexAdapter:
                 session = self._sessions.get(session_id)
                 if session is None:
                     raise AgentError("unknown_session", "Session does not exist or server restarted. Start a new conversation.")
+                if session.research_revision is not None and session.research_revision != self._research_revision():
+                    if session.lock.locked():
+                        raise AgentError("session_busy", "A turn is already running in this session.")
+                    self._sessions.pop(session.id, None)
+                    session.close()
+                    raise AgentError("research_changed", "Accepted research changed. Submit a new question to start a fresh evidence-scoped session; no automatic model request.")
             else:
                 session = self._new_session()
                 self._sessions[session.id] = session
@@ -410,6 +434,8 @@ class CodexAdapter:
                         "error":{"code":error.code,"message":error.message},
                         "tool_events":events},ensure_ascii=False) + "\n")
                 raise
+            if session.research_revision is not None and session.research_revision != self._research_revision():
+                raise AgentError("research_changed", "Research changed during this turn; a mixed-version model answer is not accepted. No automatic retry.")
             response = {"schema_version": 1, "session_id": session.id, "run_id": run_id, "status": "completed", **converted}
             usage = result.usage.model_dump(mode="json") if result.usage else None
             with (self.settings.run_dir / "turns.jsonl").open("a", encoding="utf-8") as file:
@@ -430,7 +456,7 @@ class CodexAdapter:
                     self._sessions.pop(session.id, None)
             session.lock.release()
 
-    def discover(self, question: str, *, topic_ids: list[str], context: dict | None = None) -> dict:
+    def discover(self, question: str, *, topic_ids: list[str], context: dict | None = None, authorization_id: str | None = None) -> dict:
         """Explicit ephemeral discovery, isolated from ordinary market conversations.
 
         The same Adapter/auth/runtime owns both profiles. Native metadata is
@@ -447,17 +473,27 @@ class CodexAdapter:
         if context and (not context.keys() <= {"area_id"} or context.get("area_id") not in {"city", "west_end", "canary_wharf", "midtown_fringe"}):
             raise AgentError("invalid_context", "Only an existing area selection may accompany discovery; it does not prove source geography.")
         identifier = "native-" + uuid4().hex
-        budget = DiscoveryBudget(self.settings.discovery_budget_file)
+        try:
+            budget_file = self.authorization.resolve(authorization_id)
+            budget = DiscoveryBudget(budget_file)
+            web_grant = budget.ensure_active().get("authorization_source") == "web"
+        except DiscoveryError as error:
+            raise AgentError(error.code, error.message) from error
+        if web_grant and authorization_id is None:
+            raise AgentError("discovery_authorization_required", "Bind this search to the explicitly approved web authorization ID; no automatic choice or renewal.")
         with self._lock:
-            if self._turns >= self.settings.max_turns:
+            # Web discovery is bounded by its finite receipt, not an unrelated
+            # process lifetime counter that would require a restart to use a new grant.
+            if not web_grant and self._turns >= self.settings.max_turns:
                 raise AgentError("turn_budget_exhausted", "Configured per-process turn limit reached; no retry.")
             if self._discoveries:
                 raise AgentError("session_busy", "A discovery request is already active in this application.")
             try: budget.start_turn("native_discovery", identifier, question)
             except DiscoveryError as error: raise AgentError(error.code, error.message) from error
-            self._turns += 1
+            if not web_grant:
+                self._turns += 1
             try:
-                session = self._new_session(discovery={"request_id": identifier, "topic_ids": topic_ids, "context": context or {}})
+                session = self._new_session(discovery={"request_id": identifier, "topic_ids": topic_ids, "context": context or {}, "budget_file": budget_file})
             except Exception as error:
                 safe = error if isinstance(error, AgentError) else AgentError("runtime_start_failed", "Discovery runtime could not start; no retry or simulated answer.")
                 SourcePool(self.settings.discovery_dir).record({"id": identifier, "provider": "codex_native",
@@ -496,6 +532,10 @@ class CodexAdapter:
             timer.start()
             prompt = question + "\nRequested business dimensions (intent only): " + json.dumps(topic_ids)
             if context: prompt += "\nSelected map context (not source geography): " + json.dumps(context)
+            try:
+                budget.ensure_active()  # Setup can outlive approval; never execute on an expired reservation.
+            except DiscoveryError as error:
+                raise AgentError(error.code, error.message) from error
             handle = session.thread.turn(prompt, effort="low", output_schema=_DiscoveryAnswer.model_json_schema())
             with (directory / "sdk-events.jsonl").open("x", encoding="utf-8") as journal:
                 for event in handle.stream():

@@ -1,5 +1,27 @@
 # 执行验证记录
 
+## GitHub 交付与 Kimi 素材更新（2026-10-12）
+
+用户后续明确授权提交／推送最新更新、另建代码包及更新最近PPT材料；仍在main。此授权只整合公开源码、测试和资料，不扩大搜索／模型／抓取／调度额度或自动上传／分享。中英完整／增量Kimi prompt加入网页有限授权与原材料先暂存再单独批准本批；十一张素材中的新接纳截图使用明确synthetic输入／110，不能作真实市场证据，PPT成品仍由Kimi完成。中文README与两图纳入显式交付白名单，CLI回归先得到遗漏合成图的RED再GREEN。
+
+- **离线业务**：本轮已有入口`npm run check:quick`148项Python＋TypeScript通过，wall3.43秒（10秒预算）；含6项真实打包CLI临时仓库测试。日志与RED在`var/delivery-validation/github-kimi-20261012T183435622425Z/`，不以其代替产品验收。
+- **真实地图融合／E2E**：本轮未重新执行／构建或占用共享浏览器入口，沿用下面有日期的完整记录72通过／9失败／1跳过作为已知状态，未宣布GREEN，也不扩大地图修复。
+- **实时应用模型／搜索／抓取**：本轮新增0，不读凭据、不续旧账本。新增素材为已经存在的禁模型、隔离HTTP／存储实链，输入为合成TXT，图片不是新实测；旧冻结ZIP／PPT保持不变。打包manifest三类验证仍保持Not yet verified，不冒称解压安装或新GPU／模型验收。
+
+## 网页有限搜索授权与原材料研究批次（2026-10-12）
+
+用户明确批准网页API／独立JSON账本／有限本批接纳与用户原材料入口；固定HEAD `e4bcc979e4e7bdb31e4146575cb86d38e4dd5c65`，保留起始其他WIP，不提交／推送／打包。局部八图与实际合同见[设计](architecture/web-authorization-and-intake.md)。搜索grant和本批入库分别授权，metadata不可发布；用户上传匹配不等于在线机构认证。当前新接口已实现，以下不是实时搜索／模型验收。
+
+- **离线业务**：最新`check:quick`148项Python＋TypeScript通过，wall3.38秒，仍在10秒预算内。公开Budget／Authorization／Intake／HTTP接缝保留有效期、幂等、并发互斥、旧receipt不变、原bytes/hash、整批冲突与缺原文拒绝、动态overlay、SDK前／执行中研究版本守卫。新增RED还捕获未绑定ID可用活动grant、网页grant受进程寿命计数阻断、City被capacity子串误绑定、Central London扩大到London。网络／SDK只在外部I/O使用fixture；没有将fixture或类型检查冒充真实模型。
+- **真实本地HTTP／存储／界面**：localhost `--no-agent`专用临时目录的上传→暂存（不发布）→独立本批批准→既有market刷新，冲突决定、stale revision、异源拒绝与缺原文不得confirm，全部通过。原材料为明确synthetic TXT，接口和持久化不是mock。实际浏览器1600×1000与390×844、刷新后批次仍在、原快照／观察／几何／镜头／地图尺寸不变。开发代理首次真实POST得到403（Host改写使精确同源守卫失配）；仅保留浏览器Host后GREEN，未放宽后端。开发链1项14.98秒；production链1项13.39秒；修复／clean后再次以新隔离目录、Metal实跑1项6.41秒，保留前次证据，不以选最快替代性能验收（均30秒预算）。其网页grant也仅写隔离测试档案，Agent禁用，Google／模型starts均0。
+- **控制UI专项**：修复后production build＋10项通过，wall17.35秒（30秒预算），含三语缺授权／到期／耗尽、输入／文件／draft／理由保留、整批5MB提前阻止无读文件／POST、独立授权与零被动POST、blocked无接受、原字符串／HTTPS安全链接。错误、AI筛选与候选分类DTO为fixture；实际来源库存GET是真接口，不能把本组称实时发现。
+- **真实地图融合／完整E2E**：现有`test:e2e --workers=1`、production、Apple M5 Pro／ANGLE Metal、原单项timeout和retries=0，82项为**72通过、9失败、1安全跳过**，wall238.98秒，受测输入hash全程不变。跳过项是必须显式隔离写入目录的原材料实链，已由上一项独立实际执行通过；不静默写用户账本。真实建筑染色／范围外恢复／genuine missing、共享WebGL拾取、镜头手势和1600热态通过；不是完整GREEN。失败包括旧固定分栏／地图缩窄期望与既有圆角浮层不同、默认所有摘录可见与浮层滚动不同、手机Reset map被inspector-shell遮挡、两项desktop三语renderedBuildingCount=0，以及两项cold case超时。未改回分栏、删覆盖或提高时限。
+- **失败最小复现／定向profile**：既有1600 cold case在20.28秒聚焦命令内再次复现15秒单项超时。真实trace明确Map information按钮被已打开market-panel/detail-content遮挡，不能把超时直接归因为底图慢；该次记录本地业务呈现378.6ms、首地图5451.8ms，未完成可探索步骤。既有TICKET4_PROFILE已启动，但timeout关闭页面后Profiler.stop失败，未取得完整CPU profile，不声称诊断已闭环。地图／既有浮层修复不在本次授权范围，现场保留并通知其owner。
+- **实时应用模型／搜索／抓取**：本轮新增0；旧Google1/1、订阅1/1及停止／过期官方账本不续用，不读取凭据、不恢复监测。历史一次双通路metadata和历史模型结果不代表本轮通过。最新原始证据在`artifacts/web-intake/`；production实链报告`artifacts/checks/20261012T162956996Z-17538/`，控制专项`20261012T161953661Z-16537/`，最小cold复现`20261012T164010604Z-19173/`，开发实链`var/runs/web-intake-dev-green.rJ1c8V/evidence/`。起始WIP／保护hash、RED／GREEN、真实输入、完整失败trace均保留，无凭据。
+
+- **双轴review／clean**：Standards `0ad3a235-324b-460`方向accepted、无阻断；Spec `229ac4ac-412c-486`方向accepted，唯一High为预测heading不在短quote内可被误作actual自动接纳。实际公开Intake RED复现，后端用匹配原材料的附近上下文／完整数值句／section／context拒绝预测；被隐藏heading、截尾注、will reach及授权后人工覆写均不得发布，无关其他章节预测不全篇阻断，GREEN。同步补已授权资源上限：整批原bytes≤5M，5M可暂存、5M+1归档前拒绝，前端不读／POST超额文件。冻结39文件scope后仅一次clean，删除3个feature新段的重复验收数字，改引此权威记录；无代码行为／API／依赖变更。相关HTTP、148项quick、10项控制UI通过，clean后真实原材料UI实链再通过。两次Focused Closure resume原reviewers均**Agent not found（已清理）**，四次review调用已用完，停止，不替代／第三轮；从已保存output恢复初审结论，不伪称独立Closure已完成。证据在`artifacts/web-intake/review/`。本次修复后尚未再跑完整82项；前述完整RED不抹除。Feature fingerprint已按当前事实刷新，`check`5条记录通过；仅证明文档与源码同步，不替代缺失Closure或全产品验收。
+- **本地交付入口**：原8017服务已退出，未附着／杀其他进程；使用项目venv新启动同一localhost入口，PID27058，记录`var/runs/web-intake-preview.{pid,log}`。GET验证新授权／批次路由可用、旧grant仍exhausted（Google1/1、caller1/1、余额0）、研究132条、来源579／occurrences929、本批档案空。没有生产测试grant或研究事实写入；snapshot、geometry及旧receipt SHA均与起点一致。初次误用resolve后的基础Python因缺pydantic退出，改用项目venv启动，未新增依赖。GET状态不是真实模型或搜索验收，当前实证见`artifacts/web-intake/delivery-local-status.json`。
+
 ## PPT 全部交给 Kimi：移除内部生成流程（2026-10-12）
 
 用户明确要求 PPT 成品制作／修改只由 Kimi 完成，其他 AI 只提供 prompt、真实截图和素材说明；该约定已写入 `AGENTS.md`，操作入口为 `presentation/README.md`。原英文／中文生成器、HTML／PDF 打印器、兼容脚本、7项生成器测试及非Kimi中文草稿产物已移除；旧冻结交付 ZIP／PPT 与有日期的验证材料保留为历史，不再追认当前演示。下文原制片结果都是当时记录，不是现行入口。

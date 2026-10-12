@@ -54,7 +54,7 @@ class RuntimeTests(unittest.TestCase):
                     final_response=json.dumps(legacy), usage=None)
                 return SimpleNamespace(run=lambda: result)
 
-            session = SimpleNamespace(id="offline-schema", trace=trace, lock=Lock(),
+            session = SimpleNamespace(id="offline-schema", trace=trace, lock=Lock(), research_revision=None,
                 thread=SimpleNamespace(turn=strict_sdk_turn), close=lambda: None)
             adapter = CodexAdapter(Settings(run_dir=Path(directory)))
             with patch.object(adapter, "_new_session", return_value=session):

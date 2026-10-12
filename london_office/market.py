@@ -11,8 +11,8 @@ from .data import Snapshot
 
 
 class Market:
-    def __init__(self, snapshot: Path | None = None, geometry: Path | None = None):
-        self._snapshot = Snapshot(snapshot, geometry)
+    def __init__(self, snapshot: Path | None = None, geometry: Path | None = None, *, research_dir: Path | None = None):
+        self._snapshot = Snapshot(snapshot, geometry, research_dir=research_dir)
         self._catalog = self._snapshot.catalog()
         self._areas = {item["id"]: item for item in self._catalog["areas"]}
         self._metrics = {item["id"]: item for item in self._catalog["metrics"]}
@@ -30,6 +30,10 @@ class Market:
         sources = {s["id"]: s for s in research["sources"]}
         for comparison in research["comparisons"]:
             before, after = records[comparison["previous_id"]], records[comparison["current_id"]]
+            if any(record.get("quality_status") == "conflict" for record in (before, after)):
+                comparison.update(change_value=None, status="conflict")
+                comparison["warnings"] = list(dict.fromkeys([*comparison.get("warnings", []), "Conflicting evidence: comparison withheld, original reported values remain separate."]))
+                continue
             compatible = all(before[k] == after[k] for k in ("metric", "unit", "source_geography", "kind"))
             publishers = {sources[s]["publisher"] for r in (before, after) for s in r["source_ids"]}
             if not compatible or len(publishers) != 1 or any(r["status"] != "available" for r in (before, after)) or before["kind"] == "forecast":

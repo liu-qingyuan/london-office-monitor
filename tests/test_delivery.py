@@ -18,13 +18,15 @@ class DeliveryTests(unittest.TestCase):
         for name in ("scripts/package_delivery.py", "data/snapshot.json", "data/areas.geojson", ".gitignore",
                      "frontend/tests/fixtures/city-rent-recorded-run.json", "presentation/README.md",
                      "presentation/kimi-prompt-zh-CN.md", "presentation/kimi-prompt-en.md",
-                     "presentation/kimi-update-zh-CN.md", "presentation/kimi-update-en.md"):
+                     "presentation/kimi-update-zh-CN.md", "presentation/kimi-update-en.md", "README.zh-CN.md"):
             destination = root / name
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(ROOT / name, destination)
         shutil.copytree(ROOT / "london_office", root / "london_office", ignore=shutil.ignore_patterns("__pycache__"))
         for name in ("map-zh-Hans.png", "ai-answer-historical.png", "source-discovery-historical.png",
-                     "official-monitoring-desktop.png", "official-monitoring-mobile.png"):
+                     "official-monitoring-desktop.png", "official-monitoring-mobile.png",
+                     "research-charts-desktop.png", "research-charts-mobile.png", "research-share-desktop.png",
+                     "product-floating-desktop.png", "intake-demo-synthetic-desktop.png", "intake-form-mobile.png"):
             path = root / "presentation/materials" / name
             path.parent.mkdir(parents=True, exist_ok=True)
             # Byte-copy fixture only; not a screenshot, generated deck or product acceptance.
@@ -37,6 +39,7 @@ class DeliveryTests(unittest.TestCase):
         subprocess.run(["git", "-C", str(root), "-c", "user.name=Delivery test",
                         "-c", "user.email=delivery-test@example.invalid", "commit", "-qm", "fixture"], check=True)
         (root / "README.md").write_text("current uncommitted source\n", encoding="utf-8")
+        (root / "README.zh-CN.md").write_text("中文配置说明\n", encoding="utf-8")
         (root / "docs/deleted.md").unlink()
 
     def run_delivery(self, root, *, snapshot=True):
@@ -89,7 +92,15 @@ class DeliveryTests(unittest.TestCase):
                 self.assertIn("presentation/materials/map-zh-Hans.png", names)
                 self.assertIn("presentation/materials/official-monitoring-desktop.png", names)
                 self.assertIn("presentation/materials/official-monitoring-mobile.png", names)
+                self.assertIn("presentation/materials/research-charts-desktop.png", names)
+                self.assertIn("presentation/materials/research-charts-mobile.png", names)
+                self.assertIn("presentation/materials/research-share-desktop.png", names)
+                self.assertIn("presentation/materials/product-floating-desktop.png", names)
+                self.assertIn("presentation/materials/intake-demo-synthetic-desktop.png", names)
+                self.assertIn("presentation/materials/intake-form-mobile.png", names)
+                self.assertIn("README.zh-CN.md", names)
                 self.assertEqual(archive.read(prefix + "README.md"), b"current uncommitted source\n")
+                self.assertEqual(archive.read(prefix + "README.zh-CN.md").decode("utf-8"), "中文配置说明\n")
                 self.assertNotIn("docs/deleted.md", names)
                 self.assertTrue(names.isdisjoint(private))
                 self.assertFalse(any(name.startswith("artifacts/") for name in names))

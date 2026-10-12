@@ -1,0 +1,39 @@
+/* Inherits the existing floating Agent glass panel; these are content cards, not a map/sidebar layout. */
+.user-control { margin: 12px 0 18px; padding: 15px; border: 1px solid var(--glass-edge); border-radius: 17px; background: #a1d1ef0c; color: var(--ink); overflow-wrap: anywhere; }
+.user-control h3 { font-size: 14px; font-weight: 560; margin-bottom: 7px; }
+.user-control h4 { font-size: 12px; font-weight: 550; margin: 18px 0 9px; }
+.user-control h5, .user-control h6 { margin: 0 0 8px; font-size: 12px; line-height: 1.5; }
+.control-limit { color: var(--muted); font-size: 10px; line-height: 1.7; margin: 6px 0; }
+.control-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr)); gap: 10px; margin: 14px 0; }
+.control-form label, .intake-decision label { display: grid; align-content: start; gap: 5px; color: #c5e0ef; font-size: 10px; line-height: 1.5; min-width: 0; }
+.control-form input:not([type=checkbox]), .control-form textarea, .control-form select, .intake-decision textarea { width: 100%; min-width: 0; max-width: 100%; padding: 9px 10px; color: var(--ink); background: #102739a8; border: 1px solid #a9d8f843; border-radius: 9px; font-family: inherit; font-size: 11px; line-height: 1.5; }
+.control-form textarea, .intake-decision textarea { min-height: 67px; resize: vertical; }
+.control-form input[type=file] { font-size: 10px; }
+.control-form fieldset { min-width: 0; margin: 0; padding: 7px 10px; border: 1px solid #a9d8f843; border-radius: 10px; display: flex; flex-wrap: wrap; gap: 5px 12px; grid-column: 1 / -1; }
+.control-form legend { padding: 0 5px; color: #c5e0ef; font-size: 10px; }
+.control-form fieldset label { display: inline-flex; gap: 5px; align-items: center; }
+.user-control button { border: 1px solid #acd9f652; border-radius: 10px; background: #7cbbe327; color: #e4f4ff; padding: 9px 12px; font-size: 10px; line-height: 1.5; }
+.user-control button:hover:not(:disabled) { background: #a3d8f345; }
+.user-control button:disabled { cursor: not-allowed; }
+.user-control .control-primary { border-color: #ace6fb9c; background: #86cdea38; }
+.control-form > button { align-self: end; }
+.control-feedback:not(:empty) { padding: 10px; margin: 9px 0; color: #f3cabd; border: 1px solid #e6aa9b55; border-radius: 9px; font-size: 10px; line-height: 1.6; }
+.authorization-state, .control-warnings { font-size: 10px; line-height: 1.75; color: #c5dceb; }
+.authorization-state p, .control-warnings p { margin: 5px 0; }
+.control-warnings { color: #e6cfa6; }
+.draft-documents p, .draft-candidates p { border-bottom: 1px solid var(--line); padding: 8px 0; font-size: 10px; line-height: 1.6; }
+.intake-batch { margin-top: 14px; border: 1px solid var(--glass-edge); border-radius: 12px; padding: 14px; }
+.intake-candidate { margin: 15px 0 0; padding: 12px; background: #99d2f00b; border: 1px solid var(--line); border-radius: 11px; }
+.intake-candidate h6 { color: #d5ecfa; }
+.control-status, .control-detail, .intake-source { font-size: 10px; line-height: 1.65; margin: 5px 0; }
+.control-detail, .intake-source { color: #c5daea; }
+.control-status { color: #f0d9ac; }
+.intake-value { display: block; margin: 9px 0; color: #c5efff; font: 17px/1.4 var(--mono); }
+.intake-candidate blockquote { white-space: pre-wrap; overflow-wrap: anywhere; }
+.intake-decision { margin-top: 12px; display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
+.intake-decision label { flex: 1 1 100%; }
+@media (max-width: 440px) {
+  .user-control { padding: 12px; }
+  .control-form { grid-template-columns: minmax(0, 1fr); }
+  .intake-batch, .intake-candidate { padding: 10px; }
+}

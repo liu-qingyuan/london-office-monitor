@@ -10,6 +10,7 @@ import unittest
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from london_office.data import ROOT
+from pathlib import Path
 
 
 class HTTPTests(unittest.TestCase):
@@ -21,7 +22,8 @@ class HTTPTests(unittest.TestCase):
         cls.url = f"http://127.0.0.1:{port}"
         cls.discovery_directory = tempfile.TemporaryDirectory()
         cls.server = subprocess.Popen([sys.executable, "-m", "london_office", "serve", "--port", str(port), "--no-agent"], cwd=ROOT,
-            env={**os.environ, "LONDON_DISCOVERY_DIR": cls.discovery_directory.name},
+            env={**os.environ, "LONDON_DISCOVERY_DIR": cls.discovery_directory.name,
+                "LONDON_RESEARCH_DIR": str(Path(cls.discovery_directory.name)/"research")},
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         for _ in range(100):
             if cls.server.poll() is not None:
@@ -111,6 +113,27 @@ class HTTPTests(unittest.TestCase):
         code, result = self.request("/api/discovery", {**body, "api_key": "TEST-ONLY"})
         self.assertEqual(code, 422)
         self.assertNotIn("TEST-ONLY", json.dumps(result))
+
+    def test_web_grant_requires_exact_user_origin_and_never_starts_offline_model(self):
+        body = {"google_cap":2,"model_turn_cap":1,"valid_for_minutes":5,"request_id":"http-fixture-action"}
+        for headers in ({}, {"Origin":"https://example.com","X-Office-User-Action":"confirm"},
+                {"Origin":"http://127.0.0.1:9","X-Office-User-Action":"confirm"}):
+            code, result = self.request("/api/discovery/authorization", body, headers)
+            self.assertEqual(code,403)
+            self.assertEqual(result["error"]["code"],"origin_not_allowed")
+        headers={"Origin":self.url,"X-Office-User-Action":"confirm"}
+        code, grant = self.request("/api/discovery/authorization",body,headers)
+        self.assertEqual(code,200)
+        self.assertEqual(grant["status"],"active")
+        self.assertEqual(grant["google"]["remaining"],2)
+        self.assertNotIn("budget_file",grant)
+        self.assertNotIn(self.discovery_directory.name,json.dumps(grant))
+        code, failure = self.request("/api/discovery",{"question":"Offline fixture only","authorization_id":grant["authorization_id"]},headers)
+        self.assertEqual(failure["error"]["code"],"agent_disabled")
+        code, repeated = self.request("/api/discovery/authorization",body,headers)
+        self.assertEqual(repeated["authorization_id"],grant["authorization_id"])
+        self.assertEqual(repeated["model_turns"]["starts"],0)
+        self.assertEqual(self.request("/api/discovery/authorization")[1]["authorization_id"],grant["authorization_id"])
 
     def test_foreign_browser_origin_cannot_spend_model_turns(self):
         code, result = self.request("/api/chat", {"question":"City rent?"}, {"Origin":"https://example.com"})

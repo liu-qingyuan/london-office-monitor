@@ -26,9 +26,17 @@
     "frontend/tests/left-detail.spec.ts",
     "frontend/tests/cold-start.spec.ts",
     "frontend/scripts/**",
-    ".github/workflows/portability.yml"
+    ".github/workflows/portability.yml",
+    "london_office/authorization.py",
+    "london_office/storage.py",
+    "tests/test_authorization.py",
+    "tests/test_runtime_consent.py",
+    "frontend/src/discovery-authorization.ts",
+    "frontend/src/user-controls.css",
+    "frontend/tests/research-intake*.spec.ts",
+    "frontend/vite.config.ts"
   ],
-  "fingerprint": "sha256:df0ec43621b58a54162795dfcde742c64ee5fec0aaa90d1d2ef0f15606eb4664"
+  "fingerprint": "sha256:acc088d5cf30af2f51ff88041b35c6a5ce855708dc385a13bbb3933a447324f4"
 }
 ---
 
@@ -37,6 +45,10 @@
 保留资料入口及出现证据，与正式历史行情分开；不把检索摘要当成已核验指标。
 
 ## 当前行为
+
+网页已实现有限搜索授权：同源用户POST创建独立receipt，设置Google／订阅caller turns各1–100和有效期1–1440分钟；GET显示活动／耗尽／过期／损坏、starts／余额与expiry，不查账号或key。授权并搜索绑定具体ID，箭头／Enter不自动授权；request_id重放不清零，旧receipt不覆盖。后端在Google凭据／账户／搜索及SDK执行前检查UTC期限；网页grant按自身caller cap约束，不依赖重启。caller turns不是内部native HTTP／token／费用硬上限。普通六工具、市场验证权限和停止的官方监测不被扩大。
+
+原材料研究暂存／本批批准是独立用户入口，不注册模型工具，见market-query。开发／production代理保留精确同源守卫；metadata或人工确认不能代替原文证据。[最新验证](../verification.md)分别记录离线、真实本地HTTP／界面、完整Metal失败与零新增实时搜索／模型调用，不沿用历史GREEN。
 
 SourcePool 保存独立、不可覆盖的 JSON 运行记录，完整保留 URL 出现、查询、通路、thread／turn／工具项及短引用；只按完全相同 URL 去重，不推断资料覆盖。八个 topic 是检索意图，不是已证明的业务覆盖。CLI `sources` 与 `GET /api/discovery` 只读；`collect-sources` 和独立 MCP profile 提供有预算的 Google metadata 采集。现有 Agent 默认仍是六个只读市场工具、禁 Web Search；界面显式选择 Discover sources 后，通过 `POST /api/discovery` 使用同一 CodexAdapter 的临时发现 profile，允许 Google 工具和原生搜索，不复用为普通聊天。查看池、切区、打开导航或输入问题均不自动发起搜索。SerpAPI key 由直接 CLI／应用父后端读取：三系统可用环境变量，macOS 还可复用既有专用 Keychain。应用发现 MCP 只通过请求级认证 loopback 桥接执行受限 query，不获得实际 key，不改变父后端的预算／topic／context／request ID；启动失败、完成／异常、timeout 与 Adapter.close 关闭监听。SDK／MCP key 环境显式清空。receipt 保留原字段及互斥／原子写入，用 POSIX／Windows 文件锁和 UTF-8；Google 不再固定个人代理端口。
 
@@ -48,8 +60,12 @@ SourcePool 保存独立、不可覆盖的 JSON 运行记录，完整保留 URL �
 
 历史 Google 六题和真实 UI 双通路证据仍保留：原生30次 URL 出现绑定 thread／turn／item，AI 筛选与187个不同 URL 字符串／247次出现的全池分开；普通市场真实 compare_periods 未混入发现工具。这些实时轮早于本次跨平台改动及此前收尾安全补丁，不代表当前实现已重新实测。证据及 fixture／历史／实时区分见 `docs/verification.md`。
 
-当前最新12事实增量接纳及News短运行不改变来源发现端点／六工具：Python115项＋类型检查quick2.84秒；真实正式新资料／研究／监测API UI4/4（20.28秒），描述覆盖、八研究页三语和两项发现共存9/9（18.29秒），均原30秒预算。其中AI筛选仍是fixture，原库存GET／监测GET是真接口；发现Google／模型新增调用为0，不将相关回归扩称最新62项全回归。记录在`artifacts/monitoring/20261012-completion/`，来源核验、正式接纳、索引检测与发现权限分开。
+资料接纳与News短运行阶段不改变来源发现端点／六工具：Python115项＋类型检查quick2.84秒；真实正式新资料／研究／监测API UI4/4（20.28秒），描述覆盖、八研究页三语和两项发现共存9/9（18.29秒），均原30秒预算。其中AI筛选仍是fixture，原库存GET／监测GET是真接口；发现Google／模型新增调用为0，不将相关回归扩称最新62项全回归。记录在`artifacts/monitoring/20261012-completion/`，来源核验、正式接纳、索引检测与发现权限分开。
+
+当前用户另行明确授权一轮网页来源发现，已接到8017应用的独立新receipt（不是旧授权续期或清零）：免费Google1次/订阅caller turn1轮，普通模型市场问答子额度0。真实浏览器单次POST返回HTTP200，Google和原生均completed_metadata_only；确认Free Plan月费0，Google27次URL出现、原生12次/一个可见搜索项，来源池554→579新增25条未核验exact URL，AI选2个publisher索引、未找到请求的具体原报告。本次1/1均耗尽，snapshot与旧官方账本hash不变，原生内部HTTP数未知，不自动扩额/发布。证据在`artifacts/discovery/20261012-one-shot/`；此实时来源筛选不证明普通市场模型问答或完整地图性能。
+
+UI以本地英/简/繁文案解释缺授权、模型/搜索次数用完、缺key及免费配额未确认，语言切换重绘同一原始错误而不重问；sourceconfigured=false先提示未启用。4项UI回归10.84秒（错误与AI筛选为fixture、库存是真GET），115项Python/类型quick2.42秒。默认英文`README.md`与完整`README.zh-CN.md`互链，含用户在终端明确批准后创建新唯一budget文件、同终端配置/restart/catalog检查及安全边界；文档示例只是本机手动授权流程，不自动执行或额外授予本任务额度。以上终端和一次真实搜索为历史验证；现行网页参数授权及本批研究确认已实现，但metadata池仍不可直接发布。
 
 ## 限制与剩余
 
-来源内容、发布日期、统计口径与地理覆盖尚未核验；候选池含旧资料、URL 变体及偏题结果，不可按数量宣称覆盖。没有数据库、候选池自动接纳／发布、精确地图绑定或源报告全文获取。本轮已授权的一次性研究静态接纳不改变未核验候选的证据状态。历史最小发现任务receipt上限为Google 8次、Codex 3轮（原生2＋市场验证1），不是新任务可用额度。八维/后续验证采用各自明确授权receipt；失败占额度，不借旧余量／自动重试／续约。新增离线监测模块的授权不自动启用真实搜索、抓取、定时或正式数据更新。Google 每个发现请求最多一次尝试，跨 MCP 重连保留限制。原生只记录 SDK 可见 metadata，搜索／查询边界以可观察事件触发中止，无法硬计内部 HTTP、保证所有结果暴露或强制模型调用两种工具；结果按实际完成证据分开呈现。关闭面板不取消已提交请求。候选归档需要支持硬链接的本地文件系统（如 Windows NTFS）。三系统原生离线 CI 已通过；本机原37真实地图/E2E和单个历史研究问答已另有新实测；各平台真实账户／搜索／模型、完整地图与跨硬件性能仍未本轮验证，fixture／启动／UI smoke不代替它们。双轴初审的唯一 High 为上述3处测试路径遗漏，已修复并定向验证；原 reviewer 无法恢复，因此独立 Closure 未完成、clean 未执行，不虚构复核通过。剩余产品验收以最新实测为准，门禁一致不表示通过。
+来源内容、发布日期、统计口径与地理覆盖尚未核验；候选池含旧资料、URL 变体及偏题结果，不可按数量宣称覆盖。没有数据库、metadata池无人值守接纳／发布、精确地图绑定或联网源报告全文获取。网页明确授权的原材料批次可有限接纳，不授予未来无限发布。本轮已授权的一次性研究静态接纳不改变未核验候选的证据状态。历史最小发现任务receipt上限为Google 8次、Codex 3轮（原生2＋市场验证1），不是新任务可用额度。八维/后续验证采用各自明确授权receipt；失败占额度，不借旧余量／自动重试／续约。新增离线监测模块的授权不自动启用真实搜索、抓取、定时或正式数据更新。Google 每个发现请求最多一次尝试，跨 MCP 重连保留限制。原生只记录 SDK 可见 metadata，搜索／查询边界以可观察事件触发中止，无法硬计内部 HTTP、保证所有结果暴露或强制模型调用两种工具；结果按实际完成证据分开呈现。关闭面板不取消已提交请求。候选归档需要支持硬链接的本地文件系统（如 Windows NTFS）。三系统原生离线 CI 已通过；本机原37真实地图/E2E和单个历史研究问答已另有新实测；各平台真实账户／搜索／模型、完整地图与跨硬件性能仍未本轮验证，fixture／启动／UI smoke不代替它们。双轴初审的唯一 High 为上述3处测试路径遗漏，已修复并定向验证；原 reviewer 无法恢复，因此独立 Closure 未完成、clean 未执行，不虚构复核通过。剩余产品验收以最新实测为准，门禁一致不表示通过。

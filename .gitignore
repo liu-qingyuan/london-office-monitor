@@ -1,5 +1,6 @@
 .ralph/
 .claude/
+.pi/remote-pi/
 CLAUDE.md
 
 # Authentication and local configuration: never ship credentials.
@@ -28,6 +29,7 @@ raw/
 playwright-report/
 test-results/
 .browser/
+.playwright-cli/
 .pw-browsers/
 *.log
 

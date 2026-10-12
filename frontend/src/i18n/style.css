@@ -1,0 +1,67 @@
+/* Installed system fonts only. Import after ../style.css; no font downloads. */
+:root {
+  --font-en: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-zh-hans: 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans SC', 'WenQuanYi Micro Hei', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-zh-hant: 'PingFang TC', 'PingFang HK', 'Microsoft JhengHei', 'Noto Sans CJK TC', 'Noto Sans TC', 'Heiti TC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --mono-en: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+  --mono-zh-hans: 'SFMono-Regular', Consolas, 'Liberation Mono', 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Noto Sans SC', monospace;
+  --mono-zh-hant: 'SFMono-Regular', Consolas, 'Liberation Mono', 'PingFang TC', 'PingFang HK', 'Microsoft JhengHei', 'Noto Sans CJK TC', 'Noto Sans TC', monospace;
+  --ui-font: var(--font-en);
+  font-family: var(--ui-font);
+}
+:root[lang='en'] { --ui-font: var(--font-en); --mono: var(--mono-en); }
+:root[lang='zh-Hans'] { --ui-font: var(--font-zh-hans); --mono: var(--mono-zh-hans); }
+:root[lang='zh-Hant'] { --ui-font: var(--font-zh-hant); --mono: var(--mono-zh-hant); }
+button, input, select, textarea { font-family: inherit; }
+
+/* Opt-in masthead group: brand and selector stay together at the upper left. */
+.masthead-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.language-switch {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  pointer-events: auto;
+  color: var(--ink, #eaf4ff);
+  border: 1px solid var(--glass-edge, #d8edff26);
+  border-radius: 16px;
+  background-color: var(--glass, #172b3d69);
+  background-image: var(--glass-sheen, none);
+  box-shadow: var(--glass-shadow, none);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+}
+.language-switch-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.language-switch select {
+  max-width: 9rem;
+  padding: 9px 8px;
+  border: 0;
+  border-radius: inherit;
+  color: inherit;
+  background: transparent;
+  color-scheme: dark;
+  font-size: 11px;
+  cursor: pointer;
+}
+.language-switch select:focus-visible { outline: 2px solid var(--accent, #81d4f3); outline-offset: 3px; }
+/* Reserve the occupied upper-left brand/selector row on intermediate desktops. */
+@media (min-width: 761px) and (max-width: 1180px) {
+  .agent-shell { left: calc(50% + 160px); width: min(480px, calc(100vw - 370px)); }
+  .agent-expansion, .workspace.market-open .agent-expansion { left: 50%; width: min(720px, calc(100vw - var(--detail-width) - 24px)); }
+}
+#reset-map span { white-space: nowrap; }
+@media (max-width: 760px) {
+  .masthead-left { gap: 8px; }
+  .language-switch select { max-width: 7rem; padding: 8px 6px; font-size: 10px; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .language-switch { background-color: #192c40; background-image: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+}

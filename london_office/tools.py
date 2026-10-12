@@ -14,9 +14,9 @@ class BusinessTools:
             ("market_catalog", "List verified dataset scope, metric definitions, valid areas and historical periods. No real-time data.", {}, []),
             ("market_query", "Query exact area / metric / historical period. Returns Python-calculated changes, missing/conflict states and evidence. Prime rent is average achieved, not headline; rent billing period not stated.", {"area": area, "metric": metric, "period": period}, ["area", "metric", "period"]),
             ("compare_periods", "Python computes comparable-period rent percent changes or vacancy percentage-point changes. Retains publisher growth separately and warns about discrepancies. Never calculate changes yourself.", {"area": area, "metric": metric, "previous_period": period, "current_period": period}, ["area", "metric", "previous_period", "current_period"]),
-            ("market_brief", "Get all supported metrics, Python changes, evidence and historical report events for a period and optional area. Report events are not live news.", {"period": period, "area": area}, ["period"]),
-            ("source_details", "Get an existing source and its exact historical evidence excerpts by source_id returned from queries. Does not fetch arbitrary URLs.", {"source_id": {"type": "string"}}, ["source_id"]),
-            ("verify_source", "Read-only network check of one known official source_id: verify existing excerpts, timestamp and hash. No new-report discovery or automatic snapshot update.", {"source_id": {"type": "string"}}, ["source_id"]),
+            ("market_brief", "Get Python historical observations/changes and admitted eight-dimension research records/comparisons with source-scoped windows, evidence and report events. Research is independent of the optional selected area and year-end period: historical, forecast, sample and event context must not be mapped to that area. Report events are not live news.", {"period": period, "area": area}, ["period"]),
+            ("source_details", "Get an existing source, including known archived research sources, and its exact short evidence excerpts by source_id. Does not fetch arbitrary URLs.", {"source_id": {"type": "string"}}, ["source_id"]),
+            ("verify_source", "Read-only network check of an originally approved official source_id only: verify existing excerpts, timestamp and hash. New archived research sources are not network-verifiable; no new-report discovery or automatic snapshot update.", {"source_id": {"type": "string"}}, ["source_id"]),
         ]
 
     def list_tools(self) -> list[dict]:

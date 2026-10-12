@@ -1,6 +1,14 @@
 import {MarketMap, type CameraState} from './map';
-import type {ApiError, AreaId, Catalog, ChatResult, Comparison, DiscoveryResult, Evidence, Market, MetricId, Note, Observation, PeriodId, Source, SourceCandidate, SourcePool, ToolCall} from './types';
+import {mountMonitoring} from './monitoring';
+import type {ApiError, AreaId, Catalog, ChatResult, Comparison, DiscoveryResult, Evidence, Market, MetricId, Note, Observation, PeriodId, Research, ResearchComparison, ResearchRecord, Source, SourceCandidate, SourcePool, SourceTopicId, ToolCall} from './types';
+import {createI18n, applyLanguage, mountLanguageSelector, isMessageKey, dictionaries, type MessageKey, type MessageParams} from './i18n';
 import './style.css';
+import './i18n/style.css';
+import {localizeDescription} from './i18n/descriptions';
+
+const i18n = createI18n();
+const {t} = i18n;
+applyLanguage(document.documentElement, i18n.language);
 
 const $ = (selector: string): HTMLElement => {
   const element = document.querySelector<HTMLElement>(selector);
@@ -8,30 +16,36 @@ const $ = (selector: string): HTMLElement => {
   return element;
 };
 const escapeHtml = (value: unknown): string => String(value ?? '').replace(/[&<>"']/g, char => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[char] ?? char));
+const tr = (key: MessageKey, parameters?: MessageParams): string => escapeHtml(t(key, parameters));
+const description = (original: string): string => escapeHtml(localizeDescription(original, i18n.language));
+const uiCode = (prefix: string, code: string, fallback = code): string => {
+  const key = `${prefix}.${code}`;
+  return isMessageKey(key) ? t(key) : fallback;
+};
 const safeUrl = (value: string): string | null => { try { const url = new URL(value); return url.protocol === 'https:' ? url.href : null; } catch { return null; } };
-const sourceLink = (source: Source | undefined, label = 'Read original source ↗'): string => {
+const sourceLink = (source: Source | undefined, label = t('button.originalSource')): string => {
   const href = source && safeUrl(source.url);
-  return href ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>` : '<span>Original source link unavailable</span>';
+  return href ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>` : `<span>${tr('status.originalLinkUnavailable')}</span>`;
 };
 const formatNumber = (value: number): string => new Intl.NumberFormat('en-GB', {maximumFractionDigits: 2}).format(value);
 const formatValue = (observation: Observation | undefined): string => {
-  if (!observation || observation.status !== 'available' || observation.value === null) return 'No verified data';
+  if (!observation || observation.status !== 'available' || observation.value === null) return t('status.noVerifiedData');
   if (observation.unit === 'GBP/sq ft') return `£${new Intl.NumberFormat('en-GB', {minimumFractionDigits: 2, maximumFractionDigits: 2}).format(observation.value)} / sq ft`;
   return `${formatNumber(observation.value)}${observation.unit === '%' ? '%' : ` ${observation.unit}`}`;
 };
-const statusLabel = (observation: Observation | undefined): string => observation?.status === 'conflict' ? 'Conflicting evidence · no single verified value' : 'No verified data';
-const message = (error: unknown): string => error instanceof Error ? error.message : 'Request failed';
+const statusLabel = (observation: Observation | undefined): string => t(observation?.status === 'conflict' ? 'status.conflictingEvidence' : 'status.noVerifiedData');
+const message = (error: unknown): string => error instanceof Error ? error.message : t('error.requestFailed');
 
 async function api<T>(url: string, options?: RequestInit): Promise<T> {
   let response: Response;
   try { response = await fetch(url, options); }
-  catch { throw new Error('Cannot reach the London Office Monitor API. Check the local Python server.'); }
+  catch { throw new Error(t('error.apiUnreachable')); }
   let payload: T | ApiError;
   try { payload = await response.json() as T | ApiError; }
-  catch { throw new Error(`API returned a non-JSON response (HTTP ${response.status}).`); }
+  catch { throw new Error(t('error.apiNonJson', {status: response.status})); }
   if (!response.ok || (typeof payload === 'object' && payload !== null && 'status' in payload && payload.status === 'error')) {
     const apiError = payload as ApiError;
-    throw new Error(apiError.error?.message ? `${apiError.error.code}: ${apiError.error.message}` : `API request failed (HTTP ${response.status}).`);
+    throw new Error(apiError.error?.message ? `${apiError.error.code}: ${apiError.error.message}` : t('error.apiRequest', {status: response.status}));
   }
   return payload as T;
 }
@@ -44,7 +58,7 @@ const sections = [
   {id:'vacancy',label:'Vacancy & availability',symbol:icon('<rect x="4" y="3" width="16" height="18" rx="3"/><path d="M8 7h2M14 7h2M8 11h2M14 11h2M10 21v-6h4v6"/>'),description:'Overall vacancy is available in the snapshot. Availability is a separate measure.'},
   {id:'leasing',label:'Leasing activity',symbol:icon('<path d="M8 3h8v4H8zM8 5H5v16h14V5h-3M8 11h8M8 15h5"/>'),description:'Take-up and market activity, with historical lease examples kept separate.'},
   {id:'supply',label:'Supply pipeline',symbol:icon('<path d="M6 21V3h12M3 7h18M6 3l12 4M17 7v7M15 14h4v4h-4M3 21h9"/>'),description:'New developments, refurbishments and pre-lets. Report context, not completed supply.'},
-  {id:'macro',label:'Macro economy',symbol:icon('<path d="m3 8 9-5 9 5ZM5 8v10M10 8v10M14 8v10M19 8v10M3 21h18"/>'),description:'Interest rates, economic indicators and employment. This data connection is not implemented yet.'},
+  {id:'macro',label:'Macro economy',symbol:icon('<path d="m3 8 9-5 9 5ZM5 8v10M10 8v10M14 8v10M19 8v10M3 21h18"/>'),description:'Historical macro research in its original UK scope and statistical windows; not a London map metric.'},
   {id:'demand',label:'Demand drivers',symbol:icon('<circle cx="9" cy="8" r="3"/><path d="M3 21v-3a6 6 0 0 1 12 0v3M17 5a3 3 0 0 1 0 6M19 14a5 5 0 0 1 2 4v3"/>'),description:'Flight to quality, sustainability and hybrid working. Evidence and unconnected topics stay distinct.'},
   {id:'news',label:'News & events',symbol:icon('<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 8h10M7 12h4M7 16h4M15 12h2M15 16h2"/>'),description:'Dated research-report events. A live or emerging-news feed is not connected.'},
   {id:'layers',label:'Map layers',symbol:icon('<path d="m3 7 9-4 9 4-9 4ZM3 12l9 4 9-4M3 17l9 4 9-4"/>'),description:'Choose the existing market lens. Buildings are spatial context, not property-level market data.'}
@@ -54,8 +68,8 @@ const navigation = [sections.slice(0,3),sections.slice(3,8),sections.slice(8)].m
 const app = $('#app');
 app.innerHTML = `
   <header class="masthead">
-    <div class="brand"><span class="brand-symbol">${cityIcon}</span><div><span class="brand-overline">LONDON / MARKET INTELLIGENCE</span><strong>Office Monitor<span class="brand-dot">.</span></strong></div></div>
-    <div class="header-context"><span class="snapshot-badge"><i></i> Historical evidence <b>2024 — 2025</b></span></div>
+    <div class="masthead-left"><div class="brand"><span class="brand-symbol">${cityIcon}</span><div><span class="brand-overline">LONDON / MARKET INTELLIGENCE</span><strong><span class="brand-title">Office Monitor</span><span class="brand-dot">.</span></strong></div></div><div id="language-settings"></div></div>
+    <div class="header-context"><span class="snapshot-badge"><i></i><span class="snapshot-label">Historical evidence</span><b>2024 — 2025</b></span></div>
   </header>
   <main class="workspace">
     <section class="map-panel" aria-labelledby="page-title">
@@ -65,7 +79,7 @@ app.innerHTML = `
         <div id="map-state" class="map-state" role="status">Preparing city map…</div>
         <div id="map-tooltip" class="map-tooltip" hidden></div>
         <div id="map-directions" class="map-directions" aria-label="Offscreen submarkets"></div>
-        <div class="map-legend"><span><i class="legend-swatch verified"></i> Reported value</span><span><i class="legend-swatch missing"></i> Data gap</span><span><i class="legend-swatch conflict"></i> Conflict</span><span><i class="legend-swatch selected"></i> Selected area</span></div>
+        <div class="map-legend"><span><i class="legend-swatch verified"></i><span class="legend-reported">Reported value</span></span><span><i class="legend-swatch missing"></i><span class="legend-missing">Data gap</span></span><span><i class="legend-swatch conflict"></i><span class="legend-conflict">Conflict</span></span><span><i class="legend-swatch selected"></i><span class="legend-selected">Selected area</span></span></div>
         <div class="map-toolbar" role="group" aria-label="Map camera controls">
           <button type="button" id="zoom-in" aria-label="Zoom in" title="Zoom in">${icon('<path d="M12 5v14M5 12h14"/>')}</button>
           <button type="button" id="zoom-out" aria-label="Zoom out" title="Zoom out">${icon('<path d="M5 12h14"/>')}</button><span class="toolbar-divider"></span>
@@ -74,9 +88,9 @@ app.innerHTML = `
           <button type="button" id="top-view" aria-label="Top-down view" title="Top-down view">${icon('<path d="m3 8 9-5 9 5-9 5ZM3 12l9 5 9-5M3 16l9 5 9-5"/>')}</button><span class="toolbar-divider"></span>
           <button type="button" id="reset-map" class="reset-button" aria-label="Reset map" title="Return to city overview">${icon('<circle cx="12" cy="12" r="7"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>')} <span>Overview</span></button>
         </div>
-        <div id="map-instructions" class="map-instructions"><span>${icon('<path d="m8 8 4-4 4 4M12 4v16M8 16l4 4 4-4M4 12h16M8 8l-4 4 4 4M16 8l4 4-4 4"/>')} Drag to explore <small>Scroll to zoom · Right-drag to rotate &amp; tilt</small></span><button type="button" id="dismiss-instructions" aria-label="Dismiss map instructions">×</button></div>
+        <div id="map-instructions" class="map-instructions"><span>${icon('<path d="m8 8 4-4 4 4M12 4v16M8 16l4 4 4-4M4 12h16M8 8l-4 4 4 4M16 8l4 4-4 4"/>')} <span class="drag-instruction">Drag to explore</span><small>Scroll to zoom · Right-drag to rotate &amp; tilt</small></span><button type="button" id="dismiss-instructions" aria-label="Dismiss map instructions">×</button></div>
         <div class="camera-readout"><button type="button" id="north-view" class="compass" aria-label="Reset north" title="Face north"><span id="compass-arrow">${icon('<path d="m12 3 5 16-5-3-5 3Z"/>')}</span><b>N</b></button><span id="camera-caption">3D CITY VIEW</span><button type="button" id="map-info-toggle" aria-label="Map information" aria-expanded="false">${icon('<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7h.01"/>')}</button></div>
-        <div id="map-info" class="map-info" hidden><strong>A city backdrop, not building-level market data</strong><p>Building volumes are map-provided spatial context, not verified height surveys or property-level rent. Selection outlines are illustrative, not official reporting boundaries. Amber highlights the current selection, including building footprints inside or intersecting that outline; it is not a market value or data-quality signal.</p><p>Source: <a href="https://openfreemap.org/" target="_blank" rel="noopener noreferrer">OpenFreeMap</a> · <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap</a> · <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener noreferrer">© OpenMapTiles</a>. Rendered with MapLibre + deck.gl.</p></div>
+        <div id="map-info" class="map-info" hidden><strong>A city backdrop, not building-level market data</strong><p>Building volumes are map-provided spatial context, not verified height surveys or property-level rent. Selection outlines are illustrative, not official reporting boundaries. Amber highlights the current selection, including building footprints inside or intersecting that outline; it is not a market value or data-quality signal.</p><p><span class="map-source-label">Source</span>: <a href="https://openfreemap.org/" target="_blank" rel="noopener noreferrer">OpenFreeMap</a> · <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap</a> · <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener noreferrer">© OpenMapTiles</a>. <span class="map-renderer-note">Rendered with MapLibre + deck.gl.</span></p></div>
         <div class="map-footnote">3D buildings: spatial context only <span>Selection outlines: illustrative</span></div>
       </div>
     </section>
@@ -131,13 +145,89 @@ let touchNavigationPreview = false;
 let sessionId: string | undefined;
 const marketCache = new globalThis.Map<string, Market>();
 let cameraState: CameraState | undefined;
-const map = new MarketMap($('#map'), area => selectArea(area), (area, x, y) => hover(area, x, y), status => { $('#map-state').textContent = status; renderCameraState(); }, state => renderCameraState(state));
+let mapStatus = dictionaries.en['map.status.preparing'];
+let hovered: {area: AreaId; x: number; y: number} | null = null;
+let agentPresentation: (() => void) | null = null;
+const mapStatusKeys = ['map.status.preparing','map.status.loading','map.status.ready','map.status.backgroundUnavailable','map.status.webglUnavailable','map.status.renderUnavailable','map.status.selecting'] as const;
+const localMapStatus = (): string => {
+  const key = mapStatusKeys.find(key => dictionaries.en[key] === mapStatus);
+  return key ? t(key) : mapStatus;
+};
+const map = new MarketMap($('#map'), area => selectArea(area), (area, x, y) => hover(area, x, y), status => { mapStatus = status; $('#map-state').textContent = localMapStatus(); renderCameraState(); }, state => renderCameraState(state));
 window.__officeMapDebug = {state: () => map.debug(), project: point => map.project(point)};
+
+// These bindings are explicit UI slots, never a scan/replacement of source prose.
+function renderChrome(): void {
+  const copy: readonly [string, MessageKey][] = [
+    ['.brand-overline','brand.overline'], ['.brand-title','brand.title'], ['.snapshot-label','brand.historicalEvidence'],
+    ['.map-heading .eyebrow','map.eyebrow'], ['#page-title','map.title'], ['.map-heading p','map.subtitle'],
+    ['.legend-reported','map.legend.reported'], ['.legend-missing','map.legend.missing'], ['.legend-conflict','map.legend.conflict'], ['.legend-selected','map.legend.selected'],
+    ['#reset-map span','map.overview'], ['.drag-instruction','map.drag'], ['.map-instructions small','map.gestures'],
+    ['#map-info strong','map.backdropTitle'], ['#map-info p:first-of-type','map.backdropLimit'], ['.map-source-label','metadata.source'], ['.map-renderer-note','map.renderedWith'],
+    ['label[for=question]','agent.questionLabel'], ['#agent-heading','agent.heading'], ['label[for=agent-mode]','agent.modeLabel'],
+    ['#agent-mode option[value=market]','agent.mode.market'], ['#agent-mode option[value=discovery]','agent.mode.discovery'],
+    ['#view-source-pool','button.sourcePool'], ['.suggestion:first-child','agent.suggestion.rent'], ['.suggestion:last-child','agent.suggestion.gaps'],
+    ['.inspector-heading .eyebrow','workspace.title'], ['#measure-filter .tiny-label','filter.measure'], ['.period-filter .tiny-label','filter.period'],
+    ['.panel-divider .tiny-label','workspace.snapshotsAndSources'], ['#areas-heading','workspace.areaOverview']
+  ];
+  for (const [selector, key] of copy) $(selector).textContent = t(key);
+  const attributes: readonly [string, string, MessageKey][] = [
+    ['#map','aria-label','map.label'], ['#map-directions','aria-label','map.offscreenAreas'], ['.map-toolbar','aria-label','map.cameraControls'],
+    ['#zoom-in','aria-label','map.zoomIn'], ['#zoom-in','title','map.zoomIn'], ['#zoom-out','aria-label','map.zoomOut'], ['#zoom-out','title','map.zoomOut'],
+    ['#rotate-view','aria-label','map.rotate'], ['#rotate-view','title','map.rotateHint'], ['#tilt-view','aria-label','map.tilt'], ['#tilt-view','title','map.tiltHint'],
+    ['#top-view','aria-label','map.topDown'], ['#top-view','title','map.topDown'], ['#reset-map','aria-label','map.reset'], ['#reset-map','title','map.resetHint'],
+    ['#dismiss-instructions','aria-label','map.dismissInstructions'], ['#north-view','aria-label','map.resetNorth'], ['#north-view','title','map.faceNorth'], ['#map-info-toggle','aria-label','map.information'],
+    ['.agent-shell','aria-label','agent.label'], ['#open-agent','aria-label','button.askAgent'], ['.ask-button','aria-label','button.askAssistant'], ['.ask-button','title','button.askAssistant'],
+    ['#close-agent','aria-label','button.closeAgent'], ['#close-agent','title','button.closeAssistant'], ['#agent-mode','aria-label','agent.operationLabel'],
+    ['#workspace-nav','aria-label','workspace.sections'], ['#close-market','aria-label','button.closeWorkspace'], ['#close-market','title','button.collapseDetails'],
+    ['.controls','aria-label','filter.title'], ['#metrics','aria-label','filter.measure'], ['#periods','aria-label','filter.period'], ['.detail-panel','aria-label','workspace.areaDetail']
+  ];
+  for (const [selector, attribute, key] of attributes) $(selector).setAttribute(attribute, t(key));
+  for (const section of sections) {
+    const button = $(`#workspace-nav [data-section="${section.id}"]`);
+    button.setAttribute('aria-label', t(`nav.${section.id}`));
+    button.querySelector<HTMLElement>('.nav-item-label')!.textContent = t(`nav.${section.id}`);
+  }
+  $('.map-footnote').innerHTML = `${tr('map.buildingsFootnote')} <span>${tr('map.selectorsFootnote')}</span>`;
+  $('.inspector-foot').innerHTML = `${tr('limit.historical')}<br>${tr('limit.missing')}<br>${tr('limit.selection')}`;
+  $('#map-state').textContent = localMapStatus();
+  $('#open-agent').title = t($('#agent-expansion').hidden ? 'button.openAssistant' : 'button.closeAssistant');
+  renderAgentMode();
+  renderCameraCaption();
+}
+
+function renderLocalizedPresentation(): void {
+  const regions = ['#detail-content','#section-content','#agent-result'].map(selector => $(selector));
+  const details = regions.map(root => [...root.querySelectorAll<HTMLDetailsElement>('details')].map(detail => detail.open));
+  const scrolls = [$('#market-panel'),$('#agent-expansion'),...$('#agent-result').querySelectorAll<HTMLElement>('pre')].map(element => ({element, top: element.scrollTop, left: element.scrollLeft}));
+  applyLanguage(document.documentElement, i18n.language);
+  renderChrome(); renderFilters(); renderMarketPresentation(); renderDetail();
+  map.setLanguagePresentation(t('map.selectionSuffix'), getComputedStyle(document.documentElement).fontFamily);
+  agentPresentation?.();
+  if (hovered && !$('#map-tooltip').hidden) hover(hovered.area, hovered.x, hovered.y);
+  regions.forEach((root, index) => root.querySelectorAll<HTMLDetailsElement>('details').forEach((detail, position) => { detail.open = details[index]?.[position] ?? false; }));
+  const refreshedScrolls = [$('#market-panel'),$('#agent-expansion'),...$('#agent-result').querySelectorAll<HTMLElement>('pre')];
+  scrolls.forEach((saved, index) => { const element = refreshedScrolls[index]; if (element) { element.scrollTop = saved.top; element.scrollLeft = saved.left; } });
+  for (const button of $('#map-directions').querySelectorAll<HTMLElement>('[data-focus]')) button.setAttribute('aria-label', t('button.focusArea', {area: areaName(button.dataset.focus!)}));
+}
+
+function presentAgent(render: () => void): void { agentPresentation = render; render(); }
+function renderAgentMode(): void {
+  const discovery = ($('#agent-mode') as HTMLSelectElement).value === 'discovery';
+  $('.suggestions').hidden = discovery;
+  $('.agent-privacy').textContent = t(discovery ? 'agent.privacy.discovery' : 'agent.privacy.market');
+  ($('#question') as HTMLInputElement).placeholder = t(discovery ? 'agent.placeholder.discovery' : 'agent.placeholder.market');
+}
+function renderCameraCaption(): void {
+  $('#camera-caption').textContent = cameraState ? `${t(cameraState.pitch < 1 ? 'map.topDownCamera' : 'map.cityCamera')} · ${cameraState.pitch.toFixed(0)}° · Z ${cameraState.zoom.toFixed(1)}` : t('map.cityView');
+  const layerStatus = document.querySelector('#layer-background-status');
+  if (layerStatus) layerStatus.textContent = t('map.layer.heightLimit', {status: localMapStatus()});
+}
 
 function renderFilters(): void {
   if (!catalog) return;
-  $('#metrics').innerHTML = catalog.metrics.map(item => `<button type="button" data-metric="${escapeHtml(item.id)}" class="filter-button ${item.id === metric ? 'active' : ''}" aria-pressed="${item.id === metric}">${escapeHtml(item.label)}</button>`).join('');
-  $('#periods').innerHTML = catalog.periods.map(item => `<button type="button" data-period="${escapeHtml(item.id)}" class="filter-button ${item.id === period ? 'active' : ''}" aria-pressed="${item.id === period}">${escapeHtml(item.label)}</button>`).join('');
+  $('#metrics').innerHTML = catalog.metrics.map(item => `<button type="button" data-metric="${escapeHtml(item.id)}" class="filter-button ${item.id === metric ? 'active' : ''}" aria-pressed="${item.id === metric}">${escapeHtml(metricName(item.id))}</button>`).join('');
+  $('#periods').innerHTML = catalog.periods.map(item => `<button type="button" data-period="${escapeHtml(item.id)}" class="filter-button ${item.id === period ? 'active' : ''}" aria-pressed="${item.id === period}">${escapeHtml(periodName(item.id))}</button>`).join('');
   $('#metrics').querySelectorAll<HTMLButtonElement>('button').forEach(button => button.addEventListener('click', () => {
     metric = button.dataset.metric as MetricId; renderFilters(); void refresh();
   }));
@@ -145,57 +235,85 @@ function renderFilters(): void {
     period = button.dataset.period as PeriodId; renderFilters(); void refresh();
   }));
 }
-function plannedFields(fields: string[]): string {
-  return `<div class="connection-card"><span class="connection-status">Not connected</span><p>These fields are not connected yet. No values are inferred.</p><ul>${fields.map(field => `<li><span>${escapeHtml(field)}</span><small>Not connected</small></li>`).join('')}</ul></div>`;
+const sourceDate = (date: string | null): string => date || t('status.unknown');
+function researchProvenance(sourceIds: string[], evidenceIds: string[], sources: Source[], evidence: Evidence[]): string {
+  return `<div class="research-provenance"><span class="tiny-label">${tr('research.sourcesAndExcerpts')}</span>${sourceIds.map(id => {
+    const source = sources.find(item => item.id === id);
+    if (!source) return `<p class="warning">${tr('research.sourceUnavailable')}</p>`;
+    const quotes = evidence.filter(item => item.source_id === id && evidenceIds.includes(item.id));
+    return `<div class="research-source"><p><strong>${escapeHtml(source.publisher)}</strong> · ${escapeHtml(source.title)} · ${tr('metadata.published')}: ${escapeHtml(sourceDate(source.published_at))}</p><p>${sourceLink(source)}</p>${quotes.map(item => `<blockquote>“${escapeHtml(item.quote)}”<cite>${escapeHtml(item.section)}</cite></blockquote>`).join('')}</div>`;
+  }).join('') || `<p class="metadata">${tr('research.noSource')}</p>`}</div>`;
+}
+function researchRecordCard(record: ResearchRecord, sources: Source[], evidence: Evidence[]): string {
+  return `<article class="research-card" data-research-id="${escapeHtml(record.id)}"><span class="tiny-label">${escapeHtml(uiCode('research.kind', record.kind))} · ${escapeHtml(uiCode('status', record.status))}${record.reference_observation_ids.length ? ` · ${tr('research.primaryReference')}` : ''}</span><h4>${description(record.label)}</h4><strong class="research-value">${description(record.display_value)}</strong><dl class="research-metadata"><div><dt>${tr('research.sourceGeography')}</dt><dd>${description(record.source_geography)}</dd></div><div><dt>${tr('research.statisticalWindow')}</dt><dd>${description(record.statistical_window)}</dd></div><div><dt>${tr('research.releaseVintage')}</dt><dd>${escapeHtml(sourceDate(record.release_vintage))}</dd></div>${record.target_window !== null ? `<div><dt>${tr('research.forecastTarget')}</dt><dd>${description(record.target_window)}</dd></div><div><dt>${tr('research.forecastAsOf')}</dt><dd>${escapeHtml(sourceDate(record.forecast_as_of))}</dd></div>` : ''}<div><dt>${tr('research.definition')}</dt><dd>${description(record.definition)}</dd></div><div><dt>${tr('research.denominator')}</dt><dd>${description(record.denominator || t('status.notStated'))}</dd></div></dl>${record.event ? `<p class="metadata">${tr('research.eventOccurrence')}: ${description(record.event.occurrence_window)} · ${tr('research.precision')}: ${description(record.event.precision)} · ${tr('research.exactDay')}: ${tr('status.unknown')}</p>${record.event.quantities.map(item => `<p class="metadata">${description(item.measure)}: ${description(item.display_value)}</p>`).join('')}<p class="metadata">${description(record.event.snapshot_disposition)}</p>` : ''}${record.kind === 'forecast' ? `<p class="section-limit">${tr('research.forecastLimit')}</p>` : ''}${record.caveats.length ? `<p class="warning">${escapeHtml(record.caveats.map(value => localizeDescription(value, i18n.language)).join(' · '))}</p>` : ''}${researchProvenance(record.source_ids, record.evidence_ids, sources, evidence)}</article>`;
+}
+function researchComparisonCard(item: ResearchComparison, sources: Source[], evidence: Evidence[]): string {
+  return `<article class="research-card research-comparison" data-research-comparison-id="${escapeHtml(item.id)}"><span class="tiny-label">${tr('research.comparison')} · ${description(item.source_geography)}</span><h4>${description(item.label)}</h4><p class="metadata">${description(item.previous_window)} → ${description(item.current_window)}</p><strong class="research-value">${escapeHtml(item.change_value > 0 ? '+' : '')}${escapeHtml(formatNumber(item.change_value))} ${escapeHtml(item.change_unit)}</strong>${item.warnings.length ? `<p class="warning">${escapeHtml(item.warnings.map(value => localizeDescription(value, i18n.language)).join(' · '))}</p>` : ''}${researchProvenance(item.source_ids, item.evidence_ids, sources, evidence)}</article>`;
+}
+function researchBlock(topic: SourceTopicId, research: Research | undefined, sources?: Source[], evidence?: Evidence[]): string {
+  if (!research) return `<p class="alert error">${tr('research.unavailable')}</p>`;
+  const records = research.records.filter(item => item.topic_ids.includes(topic));
+  const latestIds = new Set(research.latest_update?.record_ids ?? []);
+  const latestRecords = records.filter(item => latestIds.has(item.id));
+  const historicalRecords = records.filter(item => !latestIds.has(item.id));
+  const comparisons = research.comparisons.filter(item => item.topic_ids.includes(topic));
+  const exclusions = research.exclusions.filter(item => item.topic_ids.includes(topic));
+  const sourceList = sources ?? research.sources;
+  const evidenceList = evidence ?? research.evidence;
+  const update = research.latest_update;
+  const latestSection = update && latestRecords.length ? `<section data-latest-research-topic="${escapeHtml(topic)}"><div class="section-report-head"><h3>Latest verified update</h3></div><p class="metadata">Admitted: ${escapeHtml(update.admitted_at)} · Source checked: ${escapeHtml(update.source_checked_at)}</p><p class="section-limit">${escapeHtml(update.note)}</p>${latestRecords.map(item => researchRecordCard(item,sourceList,evidenceList)).join('')}</section>` : '';
+  return `<div class="research-section" data-research-topic="${escapeHtml(topic)}">${latestSection}<div class="section-report-head"><h3>${escapeHtml(topicName(topic))} · ${tr('research.historical')}</h3><span>${tr('status.connected')}</span></div><p class="section-limit"><strong>${tr('research.scopeHeading')}.</strong> ${description(research.scope_note)} ${tr('research.scopeLimit')}</p>${historicalRecords.map(item => researchRecordCard(item,sourceList,evidenceList)).join('') || (!latestRecords.length ? `<p class="muted">${tr('research.noRecords')}</p>` : '')}${comparisons.map(item => researchComparisonCard(item,sourceList,evidenceList)).join('')}${exclusions.length ? `<div class="research-exclusions"><h4>${tr('research.exclusions')}</h4><p>${tr('research.evidenceLimit')}</p>${exclusions.map(item => `<p><strong>${description(item.label)}</strong> · ${description(item.reason)}</p>`).join('')}</div>` : ''}${research.warnings.length ? `<p class="warning">${escapeHtml(research.warnings.map(value => localizeDescription(value, i18n.language)).join(' · '))}</p>` : ''}</div>`;
 }
 function renderSection(): void {
   const section = sections.find(item => item.id === activeSection)!;
   const observations = ['market','rents','vacancy'].includes(activeSection);
   $('#market-panel').dataset.section = activeSection;
-  $('#panel-title').textContent = section.label;
-  $('#section-description').textContent = section.description;
+  $('#panel-title').textContent = t(`nav.${section.id}`);
+  $('#section-description').textContent = activeSection === 'news'
+    ? 'Official source checks and report links, alongside historical report events. Detected links are not verified market facts.'
+    : t(`section.${section.id}.description`);
   $('#coverage-summary').hidden = !observations;
   $('.area-panel').hidden = !observations;
   $('.panel-divider').hidden = !observations;
   $('.detail-panel').hidden = !observations;
   $('#measure-filter').hidden = !['market','rents','layers'].includes(activeSection);
-  $('.controls').hidden = activeSection === 'macro';
+  // Year-end controls only change the primary map snapshot, never research windows.
+  $('.controls').hidden = !observations && activeSection !== 'layers';
   const board = $('#section-content');
-  board.hidden = activeSection === 'market' || activeSection === 'rents';
-  if (board.hidden) return;
+  board.hidden = false;
   if (activeSection === 'layers') {
-    board.innerHTML = `<div class="layer-card"><span class="layer-symbol">${sections[8].symbol}</span><div><h3>3D city backdrop</h3><p>OpenFreeMap · OpenMapTiles</p><small id="layer-background-status"></small></div></div><div class="layer-card"><span class="layer-symbol">${cityIcon}</span><div><h3>Submarket selectors</h3><p>Illustrative geometry · four submarkets</p><small>Amber outlines and building volumes mark the current selection, not market performance. Coverage and hover values follow the selected measure and reporting period.</small></div></div><p class="section-limit">Map-provided building volumes are approximate spatial context. They do not carry building-level rent or vacancy. New data layers are not connected.</p>`;
+    board.innerHTML = `<div class="layer-card"><span class="layer-symbol">${sections[8].symbol}</span><div><h3>${tr('map.layer.backdrop')}</h3><p>OpenFreeMap · OpenMapTiles</p><small id="layer-background-status"></small></div></div><div class="layer-card"><span class="layer-symbol">${cityIcon}</span><div><h3>${tr('map.layer.selectors')}</h3><p>${tr('map.layer.geometry')}</p><small>${tr('map.layer.selectionLimit')}</small></div></div><p class="section-limit">${tr('map.layer.dataLimit')}</p>`;
     return;
   }
-  const fields: Partial<Record<SectionId,string[]>> = {
-    vacancy:['Availability ratio'],leasing:['Take-up volume','Leasing activity series'],
-    supply:['New development pipeline','Refurbishment pipeline','Pre-let supply series'],
-    macro:['Interest rates','Economic indicators','Employment'],demand:['ESG & sustainability','Hybrid working'],news:['Emerging news feed']
-  };
-  board.innerHTML = plannedFields(fields[activeSection] ?? []);
+  const topic: SourceTopicId = activeSection === 'market' ? 'submarkets' : activeSection === 'vacancy' ? 'vacancy' : activeSection as SourceTopicId;
+  board.innerHTML = catalogError || marketError ? `<p class="alert error">${tr('error.researchApi', {api: catalogError ? 'Catalog' : 'Market'})}</p>` : loading ? `<p class="muted">${tr('loading.research')}</p>` : researchBlock(topic, market?.research);
   const kind: Partial<Record<SectionId,string>> = {leasing:'report_leasing_event',supply:'report_supply_context',demand:'report_demand_driver'};
-  if (activeSection === 'macro' || activeSection === 'vacancy') return;
+  if (['market','rents','vacancy','macro'].includes(activeSection)) return;
   const notes = market?.notes.filter(note => activeSection === 'news' || note.kind === kind[activeSection]) ?? [];
-  board.innerHTML += `<div class="section-report-head"><h3>Historical report context</h3><span>${escapeHtml(periodName(period))}</span></div><p class="section-limit">Source scope applies to each excerpt. Central London context is not an individual-submarket series or live news.</p>${catalogError || marketError ? `<p class="alert error">Report context unavailable because the ${catalogError ? 'Catalog' : 'Market'} API failed. This is not a data gap.</p>` : loading ? '<p class="muted">Loading existing report context…</p>' : notes.length && market ? notesBlock(notes,market.sources,market.evidence) : '<p class="muted">No report context for this topic in the selected snapshot.</p>'}`;
+  board.innerHTML += `<div class="section-report-head"><h3>${tr('notes.contextHeading')}</h3><span>${escapeHtml(periodName(period))}</span></div><p class="section-limit">${tr('limit.reportContext')}</p>${catalogError || marketError ? `<p class="alert error">${tr('error.reportContextApi', {api: catalogError ? 'Catalog' : 'Market'})}</p>` : loading ? `<p class="muted">${tr('loading.reportContext')}</p>` : notes.length && market ? notesBlock(notes,market.sources,market.evidence) : `<p class="muted">${tr('notes.noContext')}</p>`}`;
+  if (activeSection === 'news') mountMonitoring(board);
 }
-function renderMarket(): void {
+function renderMarketPresentation(): void {
   const status = $('#global-status');
   status.className = catalogError || marketError ? 'alert error' : loading ? 'alert loading' : '';
-  status.textContent = catalogError ? `Catalog API error · ${catalogError}. Reload to retry.` : marketError ? `Market API error · ${marketError}` : loading ? 'Loading reported market values…' : '';
-  $('#period-caption').textContent = catalog?.periods.find(p => p.id === period)?.label ?? period;
+  status.textContent = catalogError ? t('error.catalog', {detail: catalogError}) : marketError ? t('error.market', {detail: marketError}) : loading ? t('loading.marketValues') : '';
+  $('#period-caption').textContent = periodName(period);
   const available = market?.observations.filter(o => o.status === 'available' && o.value !== null).length;
-  $('#coverage-summary').textContent = catalogError ? 'Area catalog unavailable — this is not a coverage gap.' : marketError ? 'Market data unavailable — this is not a coverage gap.' : available === undefined ? 'Loading reported observations…' : `${available} of ${catalog?.areas.length ?? 0} areas have reported values for this selection.`;
-  $('#agent-context').textContent = `Map selection: ${catalog?.areas.find(a => a.id === selected)?.name ?? selected} · ${catalog?.metrics.find(m => m.id === metric)?.label ?? metric} · ${catalog?.periods.find(p => p.id === period)?.label ?? period}. Your question can ask about another market.`;
-  if (!catalog) { $('#area-list').innerHTML = `<p class="empty-message">${catalogError ? 'Area catalog unavailable. No market data can be shown.' : 'Loading catalog…'}</p>`; return; }
+  $('#coverage-summary').textContent = catalogError ? t('error.catalogNotCoverageGap') : marketError ? t('error.marketNotCoverageGap') : available === undefined ? t('loading.observations') : t('workspace.coverage', {available, total: catalog?.areas.length ?? 0});
+  $('#agent-context').textContent = t('agent.context', {area: areaName(selected), metric: metricName(metric), period: periodName(period)});
+  if (!catalog) { $('#area-list').innerHTML = `<p class="empty-message">${tr(catalogError ? 'error.catalogNoData' : 'loading.catalog')}</p>`; return; }
   $('#area-list').innerHTML = catalog.areas.map((area, index) => {
     const observation = market?.observations.find(o => o.area_id === area.id);
-    const value = marketError ? 'Market API unavailable' : loading ? 'Loading…' : formatValue(observation);
-    const sub = marketError ? 'Unable to verify this selection' : loading ? 'Retrieving observation' : observation?.status === 'available' ? 'Reported historical value' : statusLabel(observation);
+    const value = marketError ? t('error.marketApiUnavailable') : loading ? t('status.loading') : formatValue(observation);
+    const sub = marketError ? t('error.selectionUnverified') : loading ? t('status.retrievingObservation') : observation?.status === 'available' ? t('status.reportedHistoricalValue') : statusLabel(observation);
     return `<button type="button" class="area-row ${selected === area.id ? 'selected' : ''}" data-area="${escapeHtml(area.id)}" aria-pressed="${selected === area.id}"><span class="area-index">0${index + 1}</span><span class="area-identity"><strong>${escapeHtml(area.name)}</strong><small>${escapeHtml(sub)}</small></span><span class="area-value">${escapeHtml(value)}</span><span class="row-arrow" aria-hidden="true">↗</span></button>`;
   }).join('');
   $('#area-list').querySelectorAll<HTMLButtonElement>('button').forEach(button => button.addEventListener('click', () => selectArea(button.dataset.area as AreaId)));
-  map.update(geometry, marketError || loading ? null : market, catalog.areas, selected);
   renderSection();
+}
+function renderMarket(): void {
+  renderMarketPresentation();
+  if (catalog) map.update(geometry, marketError || loading ? null : market, catalog.areas, selected);
   renderCameraState();
 }
 function selectArea(area: AreaId): void {
@@ -214,11 +332,12 @@ function selectArea(area: AreaId): void {
 }
 function hover(area: AreaId | null, x: number, y: number): void {
   const tooltip = $('#map-tooltip');
+  hovered = area ? {area, x, y} : null;
   if (!area || !catalog) { tooltip.hidden = true; return; }
   const info = catalog.areas.find(a => a.id === area);
   const observation = market?.observations.find(o => o.area_id === area);
   const definition = observation?.definition || catalog.metrics.find(m => m.id === metric)?.definition || '';
-  tooltip.innerHTML = `<strong>${escapeHtml(info?.name ?? area)}</strong><span>${escapeHtml(catalog.metrics.find(m => m.id === metric)?.label ?? metric)} · ${escapeHtml(catalog.periods.find(p => p.id === period)?.label ?? period)}</span><b>${escapeHtml(marketError ? 'API error · value unavailable' : loading ? 'Loading…' : formatValue(observation))}</b><span>Value: ${escapeHtml(observation?.value ?? 'null')} · unit: ${escapeHtml(observation?.unit ?? catalog.metrics.find(m => m.id === metric)?.unit ?? '')}</span><small>${escapeHtml(definition)}</small><em>Illustrative selector — not a reporting boundary.</em>`;
+  tooltip.innerHTML = `<strong>${escapeHtml(info?.name ?? area)}</strong><span>${escapeHtml(metricName(metric))} · ${escapeHtml(periodName(period))}</span><b>${escapeHtml(marketError ? t('error.tooltipUnavailable') : loading ? t('status.loading') : formatValue(observation))}</b><span>${tr('metadata.value')}: ${escapeHtml(observation?.value ?? 'null')} · ${tr('metadata.unit')}: ${escapeHtml(observation?.unit ?? catalog.metrics.find(m => m.id === metric)?.unit ?? '')}</span><small>${description(definition)}</small><em>${tr('map.selectorLimit')}</em>`;
   tooltip.hidden = false;
   tooltip.style.left = `${Math.max(8, Math.min(x + 15, $('#map').clientWidth - 268))}px`;
   tooltip.style.top = `${Math.max(8, Math.min(y + 15, $('#map').clientHeight - 210))}px`;
@@ -280,39 +399,39 @@ async function loadDetail(): Promise<void> {
 function snapshotChart(previous: Observation | undefined, current: Observation | undefined): string {
   const values = [previous,current];
   const max = Math.max(1,...values.map(o => o?.status === 'available' && o.value !== null ? o.value : 0));
-  return `<figure class="snapshot-chart" aria-label="Two reported year-end snapshots, not a continuous trend"><svg viewBox="0 0 320 112" role="img" aria-label="2024 and 2025 reported values">${values.map((o,index) => {
+  return `<figure class="snapshot-chart" aria-label="${tr('chart.snapshots')}"><svg viewBox="0 0 320 112" role="img" aria-label="${tr('chart.reportedValues')}">${values.map((o,index) => {
     const y = 16+index*52;
     const available = o?.status === 'available' && o.value !== null;
-    return `<text x="0" y="${y}" class="chart-year">${2024+index} YEAR-END</text><text x="320" y="${y}" text-anchor="end" class="chart-value">${escapeHtml(formatValue(o))}</text><line x1="0" x2="320" y1="${y+17}" y2="${y+17}" class="chart-track"/>${available ? `<rect x="0" y="${y+13}" width="${o.value!/max*320}" height="8" rx="2" class="chart-bar ${index ? 'current' : ''}"/>` : `<text x="0" y="${y+34}" class="chart-missing">${escapeHtml(statusLabel(o))} — no bar plotted</text>`}`;
-  }).join('')}</svg><figcaption>Unit: ${escapeHtml(current?.unit ?? previous?.unit ?? '')} · Two observations, not a live trend</figcaption></figure>`;
+    return `<text x="0" y="${y}" class="chart-year">${tr('period.yearEnd', {year: 2024+index})}</text><text x="320" y="${y}" text-anchor="end" class="chart-value">${escapeHtml(formatValue(o))}</text><line x1="0" x2="320" y1="${y+17}" y2="${y+17}" class="chart-track"/>${available ? `<rect x="0" y="${y+13}" width="${o.value!/max*320}" height="8" rx="2" class="chart-bar ${index ? 'current' : ''}"/>` : `<text x="0" y="${y+34}" class="chart-missing">${tr('chart.noBar', {status: statusLabel(o)})}</text>`}`;
+  }).join('')}</svg><figcaption>${tr('chart.caption', {unit: current?.unit ?? previous?.unit ?? ''})}</figcaption></figure>`;
 }
 function comparisonBlock(comparison: Comparison | undefined): string {
-  if (!comparison) return '<p class="muted">Python comparison unavailable for this selection.</p>';
-  const computed = comparison.change_value === null ? `Not calculated · ${comparison.status}` : `${comparison.change_value > 0 ? '+' : ''}${formatNumber(comparison.change_value)} ${comparison.change_unit}`;
-  return `<div class="comparison"><span class="tiny-label">PYTHON SNAPSHOT COMPARISON · ${escapeHtml(comparison.previous_period)} → ${escapeHtml(comparison.current_period)}</span><strong>${escapeHtml(computed)}</strong><span>Reported change: ${escapeHtml(comparison.reported_change_pct === null ? 'Not supplied' : `${formatNumber(comparison.reported_change_pct)}%`)} · ${escapeHtml(comparison.status)}</span>${comparison.warnings.length ? `<small class="warning">${escapeHtml(comparison.warnings.join(' · '))}</small>` : ''}</div>`;
+  if (!comparison) return `<p class="muted">${tr('comparison.unavailable')}</p>`;
+  const computed = comparison.change_value === null ? t('status.notCalculated', {status: uiCode('status', comparison.status)}) : `${comparison.change_value > 0 ? '+' : ''}${formatNumber(comparison.change_value)} ${comparison.change_unit}`;
+  return `<div class="comparison"><span class="tiny-label">${tr('metadata.snapshotComparison')} · ${description(comparison.previous_period)} → ${description(comparison.current_period)}</span><strong>${escapeHtml(computed)}</strong><span>${tr('metadata.reportedChange')}: ${escapeHtml(comparison.reported_change_pct === null ? t('status.notSupplied') : `${formatNumber(comparison.reported_change_pct)}%`)} · ${escapeHtml(uiCode('status', comparison.status))}</span>${comparison.warnings.length ? `<small class="warning">${escapeHtml(comparison.warnings.map(value => localizeDescription(value, i18n.language)).join(' · '))}</small>` : ''}</div>`;
 }
 function evidenceBlock(observation: Observation | undefined, data: Market, label: string): string {
   if (!observation || observation.status !== 'available') return '';
   const source = data.sources.find(s => s.id === observation.source_id);
   const excerpt = data.evidence.find(e => e.id === observation.evidence_id);
-  return `<details class="evidence-card"><summary><span>${escapeHtml(label)}</span><span>${escapeHtml(source?.publisher || 'Source unavailable')} <i aria-hidden="true">+</i></span></summary><div class="evidence-body"><div class="evidence-head"><span class="tiny-label">ORIGINAL SOURCE VALUE</span><span>${escapeHtml(observation.source_area || 'Submarket')}</span></div><strong>${escapeHtml(formatValue(observation))}</strong><p>${escapeHtml(observation.definition)}</p><p class="metadata">Unit: ${escapeHtml(observation.unit)} · Billing period: ${escapeHtml(observation.billing_period || 'not stated')} · ${escapeHtml(observation.spatial_granularity)} · ${escapeHtml(observation.data_kind)}</p><p class="metadata">${escapeHtml(source?.publisher || 'Source unavailable')} · ${escapeHtml(source?.title || '')} · ${escapeHtml(source?.published_at || '')} · ${escapeHtml(source?.verification_status || '')}</p>${excerpt ? `<blockquote>“${escapeHtml(excerpt.quote)}”<cite>${escapeHtml(excerpt.section)}</cite></blockquote>` : ''}${sourceLink(source)}</div></details>`;
+  return `<details class="evidence-card"><summary><span>${escapeHtml(label)}</span><span>${escapeHtml(source?.publisher || 'Source unavailable')} <i aria-hidden="true">+</i></span></summary><div class="evidence-body"><div class="evidence-head"><span class="tiny-label">${tr('metadata.originalValue')}</span><span>${description(observation.source_area || 'Submarket')}</span></div><strong>${escapeHtml(formatValue(observation))}</strong><p>${description(observation.definition)}</p><p class="metadata">${tr('metadata.unit')}: ${escapeHtml(observation.unit)} · ${tr('metadata.billingPeriod')}: ${description(observation.billing_period || t('status.notStated'))} · ${description(observation.spatial_granularity)} · ${description(observation.data_kind)}</p><p class="metadata">${escapeHtml(source?.publisher || 'Source unavailable')} · ${escapeHtml(source?.title || '')} · ${escapeHtml(source?.published_at || '')} · ${escapeHtml(uiCode('status', source?.verification_status || ''))}</p>${excerpt ? `<blockquote>“${escapeHtml(excerpt.quote)}”<cite>${escapeHtml(excerpt.section)}</cite></blockquote>` : ''}${sourceLink(source)}</div></details>`;
 }
 function notesBlock(notes: Note[], sources: Source[], evidence: Evidence[]): string {
-  if (!notes.length) return '<p class="muted">No area-linked report events in these snapshots.</p>';
+  if (!notes.length) return `<p class="muted">${tr('notes.noAreaEvents')}</p>`;
   return notes.map(note => {
     const source = sources.find(s => s.id === note.source_id);
     const excerpt = evidence.find(e => e.id === note.evidence_id);
-    return `<article class="event-card"><span class="tiny-label">${escapeHtml(note.kind)} · ${escapeHtml(note.period)}</span><h4>${escapeHtml(note.title)}</h4><p>${escapeHtml(note.summary)}</p>${excerpt ? `<blockquote>“${escapeHtml(excerpt.quote)}”</blockquote>` : ''}<span class="metadata">${escapeHtml(source?.publisher || 'Source unavailable')} · ${escapeHtml(source?.published_at || '')}</span> ${sourceLink(source, 'Original report ↗')}</article>`;
+    return `<article class="event-card"><span class="tiny-label">${description(note.kind)} · ${description(note.period)}</span><h4>${description(note.title)}</h4><p>${description(note.summary)}</p>${excerpt ? `<blockquote>“${escapeHtml(excerpt.quote)}”</blockquote>` : ''}<span class="metadata">${escapeHtml(source?.publisher || 'Source unavailable')} · ${escapeHtml(source?.published_at || '')}</span> ${sourceLink(source, t('button.originalReport'))}</article>`;
   }).join('');
 }
 function renderDetail(): void {
   const target = $('#detail-content');
   const area = catalog?.areas.find(a => a.id === selected);
-  if (!catalog) { target.innerHTML = `<p class="empty-message">${catalogError ? 'Catalog unavailable.' : 'Waiting for catalog…'}</p>`; return; }
-  if (marketError) { target.innerHTML = `<p class="alert error">Market API error · ${escapeHtml(marketError)}. This is not a missing observation.</p>`; return; }
-  if (loading) { target.innerHTML = '<p class="empty-message">Loading area values…</p>'; return; }
-  if (detailLoading || !trend && !detailError) { target.innerHTML = `<h3>${escapeHtml(area?.name || selected)}</h3><p class="empty-message">Loading two reported snapshots and Python comparison…</p>`; return; }
-  if (detailError || !trend) { target.innerHTML = `<h3>${escapeHtml(area?.name || selected)}</h3><p class="alert error">Area detail API error · ${escapeHtml(detailError || 'Unavailable')}. <button type="button" class="inline-button" id="retry-detail">Retry</button></p>`; $('#retry-detail').addEventListener('click', () => void loadDetail()); return; }
+  if (!catalog) { target.innerHTML = `<p class="empty-message">${tr(catalogError ? 'error.catalogUnavailable' : 'loading.waitingForCatalog')}</p>`; return; }
+  if (marketError) { target.innerHTML = `<p class="alert error">${tr('error.notMissingObservation', {detail: marketError})}</p>`; return; }
+  if (loading) { target.innerHTML = `<p class="empty-message">${tr('loading.areaValues')}</p>`; return; }
+  if (detailLoading || !trend && !detailError) { target.innerHTML = `<h3>${escapeHtml(area?.name || selected)}</h3><p class="empty-message">${tr('loading.detail')}</p>`; return; }
+  if (detailError || !trend) { target.innerHTML = `<h3>${escapeHtml(area?.name || selected)}</h3><p class="alert error">${tr('error.detail', {detail: detailError || t('error.catalogUnavailable')})} <button type="button" class="inline-button" id="retry-detail">${tr('button.retry')}</button></p>`; $('#retry-detail').addEventListener('click', () => void loadDetail()); return; }
   const previous = trend.previous.observations.find(o => o.area_id === selected);
   const current = trend.current.observations.find(o => o.area_id === selected);
   const comparison = trend.current.comparisons.find(c => c.area_id === selected);
@@ -320,11 +439,12 @@ function renderDetail(): void {
   const notes = [...trend.previous.notes, ...trend.current.notes].filter((note, index, all) => note.area_ids.includes(selected) && all.findIndex(n => n.id === note.id) === index);
   const sources = [...trend.previous.sources, ...trend.current.sources];
   const excerpts = [...trend.previous.evidence, ...trend.current.evidence];
-  target.innerHTML = `<div class="detail-title"><h3><i class="selection-marker" aria-hidden="true"></i>${escapeHtml(area?.name || selected)}</h3><span class="detail-pill">${escapeHtml(selectedObservation?.status === 'available' ? 'VERIFIED EXCERPT' : selectedObservation?.status === 'conflict' ? 'CONFLICT' : 'COVERAGE GAP')}</span></div><h4 class="detail-metric">${escapeHtml(metricName(metric))}</h4><div class="selected-observation"><strong>${escapeHtml(selectedObservation?.status === 'available' ? formatValue(selectedObservation) : statusLabel(selectedObservation))}</strong><span>${escapeHtml(periodName(period))} · ${escapeHtml(selectedObservation?.unit ?? market?.unit ?? '')}</span></div><details class="metric-definition"><summary>Definition &amp; illustrative scope <span aria-hidden="true">+</span></summary><p class="detail-description">${escapeHtml(selectedObservation?.definition || catalog.metrics.find(m => m.id === metric)?.definition || '')}</p><p class="detail-description">${escapeHtml(area?.definition || '')} Selection boundary is illustrative. 3D buildings are spatial context only.</p></details>${snapshotChart(previous,current)}${comparisonBlock(comparison)}<div class="subhead"><span class="tiny-label">REPORTED VALUES &amp; ORIGINAL EVIDENCE</span></div>${evidenceBlock(previous, trend.previous, '2024 YEAR-END')}${evidenceBlock(current, trend.current, '2025 YEAR-END')}${previous?.status !== 'available' && current?.status !== 'available' ? '<p class="empty-message">No verified data for this metric in either year-end snapshot. Missing does not mean zero.</p>' : ''}<details class="report-notes"><summary>Report context &amp; demand drivers <span>${notes.length} events</span></summary><p class="metadata">Historical reporting · not live news</p>${notesBlock(notes, sources, excerpts)}</details>${[...trend.previous.warnings, ...trend.current.warnings].length ? `<p class="warning">${escapeHtml([...trend.previous.warnings, ...trend.current.warnings].join(' · '))}</p>` : ''}`;
+  target.innerHTML = `<div class="detail-title"><h3><i class="selection-marker" aria-hidden="true"></i>${escapeHtml(area?.name || selected)}</h3><span class="detail-pill">${tr(selectedObservation?.status === 'available' ? 'status.verifiedExcerpt' : selectedObservation?.status === 'conflict' ? 'status.conflict' : 'status.coverageGap')}</span></div><h4 class="detail-metric">${escapeHtml(metricName(metric))}</h4><div class="selected-observation"><strong>${escapeHtml(selectedObservation?.status === 'available' ? formatValue(selectedObservation) : statusLabel(selectedObservation))}</strong><span>${escapeHtml(periodName(period))} · ${escapeHtml(selectedObservation?.unit ?? market?.unit ?? '')}</span></div><details class="metric-definition"><summary>${tr('metadata.definitionAndScope')} <span aria-hidden="true">+</span></summary><p class="detail-description">${description(selectedObservation?.definition || catalog.metrics.find(m => m.id === metric)?.definition || '')}</p><p class="detail-description">${description(area?.definition || '')} ${tr('map.selectedScopeLimit')}</p></details>${snapshotChart(previous,current)}${comparisonBlock(comparison)}<div class="subhead"><span class="tiny-label">${tr('metadata.valuesAndEvidence')}</span></div>${evidenceBlock(previous, trend.previous, t('period.yearEnd', {year: 2024}))}${evidenceBlock(current, trend.current, t('period.yearEnd', {year: 2025}))}${previous?.status !== 'available' && current?.status !== 'available' ? `<p class="empty-message">${tr('limit.noVerifiedSnapshots')}</p>` : ''}<details class="report-notes"><summary>${tr('metadata.reportContext')} <span>${tr('metadata.events', {count: notes.length})}</span></summary><p class="metadata">${tr('limit.notLiveNews')}</p>${notesBlock(notes, sources, excerpts)}</details>${[...trend.previous.warnings, ...trend.current.warnings].length ? `<p class="warning">${escapeHtml([...trend.previous.warnings, ...trend.current.warnings].map(value => localizeDescription(value, i18n.language)).join(' · '))}</p>` : ''}`;
 }
 const areaName = (id: string): string => catalog?.areas.find(a => a.id === id)?.name ?? id;
-const metricName = (id: string): string => catalog?.metrics.find(m => m.id === id)?.label ?? id;
-const periodName = (id: string): string => catalog?.periods.find(p => p.id === id)?.label ?? id;
+const metricName = (id: string): string => uiCode('metric', id, catalog?.metrics.find(m => m.id === id)?.label ?? id);
+const periodName = (id: string): string => uiCode('period', id, catalog?.periods.find(p => p.id === id)?.label ?? id);
+const topicName = (id: SourceTopicId): string => uiCode('nav', id === 'submarkets' ? 'market' : id, id);
 const scopeName = (area: string, measure: string): string => `${areaName(area)} · ${metricName(measure)}`;
 const contextName = (context: {area_id: AreaId; metric: MetricId; period: PeriodId}): string => `${scopeName(context.area_id, context.metric)} · ${periodName(context.period)}`;
 
@@ -332,16 +452,16 @@ function answerChart(previous: Observation, current: Observation): string {
   if (previous.status !== 'available' || current.status !== 'available' || previous.value === null || current.value === null) return '';
   // Scale bars for display only; all reported values and changes remain Python-owned.
   const max = Math.max(1, previous.value, current.value);
-  return `<figure class="snapshot-chart answer-chart" aria-label="Two reported snapshots, not a continuous trend">${[previous,current].map(fact => `<div class="answer-chart-row"><span>${escapeHtml(periodName(fact.period))}</span><div class="answer-chart-track"><i class="chart-bar ${fact.period === '2025-YE' ? 'current' : ''}" style="width:${fact.value!/max*100}%"></i></div></div>`).join('')}<figcaption>Unit: ${escapeHtml(current.unit)} · Two observations, not a live trend</figcaption></figure>`;
+  return `<figure class="snapshot-chart answer-chart" aria-label="${tr('chart.snapshots')}">${[previous,current].map(fact => `<div class="answer-chart-row"><span>${escapeHtml(periodName(fact.period))}</span><div class="answer-chart-track"><i class="chart-bar ${fact.period === '2025-YE' ? 'current' : ''}" style="width:${fact.value!/max*100}%"></i></div></div>`).join('')}<figcaption>${tr('chart.caption', {unit: current.unit})}</figcaption></figure>`;
 }
 
 function toolCallBlock(call: ToolCall): string {
   const output = call.output;
-  const fields: Record<string,string> = {observations:'observation',comparisons:'comparison',sources:'source',candidates:'candidate',evidence:'excerpt',notes:'event',areas:'area',metrics:'metric',periods:'period'};
-  const counts = output ? Object.keys(fields).filter(key => Array.isArray(output[key])).map(key => { const count = (output[key] as unknown[]).length; return `${count} ${fields[key]}${count === 1 ? '' : 's'}`; }).join(' · ') : 'Full output was not included by this runtime';
-  const returned = output?.observations?.map(fact => `<div><span>${escapeHtml(scopeName(fact.area_id, fact.metric))}<small>${escapeHtml(periodName(fact.period))} · ${escapeHtml(fact.status)}</small></span><strong>${escapeHtml(formatValue(fact))}</strong></div>`).join('') ?? '';
-  const changes = output?.comparisons?.map(c => `<div><span>${escapeHtml(scopeName(c.area_id, c.metric))}<small>${escapeHtml(periodName(c.previous_period))} → ${escapeHtml(periodName(c.current_period))}</small></span><strong>${escapeHtml(c.change_value === null ? `Not calculated · ${c.status}` : `${c.change_value > 0 ? '+' : ''}${formatNumber(c.change_value)} ${c.change_unit}`)}</strong></div>`).join('') ?? '';
-  return `<details class="tool-call"><summary><span class="tool-status ${call.ok ? 'ok' : 'failed'}">${call.ok ? '✓' : '!'}</span><span class="tool-identity"><code>${escapeHtml(call.name)}</code><small>${escapeHtml(counts || (output?.error ? output.error.message : 'Business JSON returned'))}</small></span><span class="tool-disclosure">${call.ok ? 'Completed' : 'Failed'} <i aria-hidden="true">+</i></span></summary><div class="tool-body">${output?.error ? `<p class="alert error">${escapeHtml(output.error.code)} · ${escapeHtml(output.error.message)}</p>` : ''}${returned || changes ? `<div class="tool-returned"><span class="tiny-label">ACTUAL PYTHON RETURN · NOT AI PROSE</span>${returned}${changes}</div>` : ''}<span class="tiny-label">INPUT ARGUMENTS</span><pre class="tool-arguments">${escapeHtml(JSON.stringify(call.arguments, null, 2))}</pre>${output ? `<details class="raw-tool-details"><summary>Complete Python output (JSON) <span aria-hidden="true">↗</span></summary><pre class="tool-output">${escapeHtml(JSON.stringify(output, null, 2))}</pre></details>` : '<p class="muted">Full tool output unavailable. Selected answer evidence is shown above, not reconstructed as a tool return.</p>'}</div></details>`;
+  const fields: Record<string, MessageKey> = {observations:'tool.count.observations',comparisons:'tool.count.comparisons',sources:'tool.count.sources',candidates:'tool.count.candidates',evidence:'tool.count.evidence',notes:'tool.count.notes',areas:'tool.count.areas',metrics:'tool.count.metrics',periods:'tool.count.periods'};
+  const counts = output ? Object.keys(fields).filter(key => Array.isArray(output[key])).map(key => t(fields[key]!, {count: (output[key] as unknown[]).length})).join(' · ') : t('tool.outputNotIncluded');
+  const returned = output?.observations?.map(fact => `<div><span>${escapeHtml(scopeName(fact.area_id, fact.metric))}<small>${escapeHtml(periodName(fact.period))} · ${escapeHtml(uiCode('status', fact.status))}</small></span><strong>${escapeHtml(formatValue(fact))}</strong></div>`).join('') ?? '';
+  const changes = output?.comparisons?.map(c => `<div><span>${escapeHtml(scopeName(c.area_id, c.metric))}<small>${escapeHtml(periodName(c.previous_period))} → ${escapeHtml(periodName(c.current_period))}</small></span><strong>${escapeHtml(c.change_value === null ? t('status.notCalculated', {status: uiCode('status', c.status)}) : `${c.change_value > 0 ? '+' : ''}${formatNumber(c.change_value)} ${c.change_unit}`)}</strong></div>`).join('') ?? '';
+  return `<details class="tool-call"><summary><span class="tool-status ${call.ok ? 'ok' : 'failed'}">${call.ok ? '✓' : '!'}</span><span class="tool-identity"><code>${escapeHtml(call.name)}</code><small>${escapeHtml(counts || (output?.error ? output.error.message : t('tool.businessJson')))}</small></span><span class="tool-disclosure">${tr(call.ok ? 'status.completed' : 'status.failed')} <i aria-hidden="true">+</i></span></summary><div class="tool-body">${output?.error ? `<p class="alert error">${escapeHtml(output.error.code)} · ${escapeHtml(output.error.message)}</p>` : ''}${returned || changes ? `<div class="tool-returned"><span class="tiny-label">${tr('tool.actualReturn')}</span>${returned}${changes}</div>` : ''}<span class="tiny-label">${tr('tool.arguments')}</span><pre class="tool-arguments">${escapeHtml(JSON.stringify(call.arguments, null, 2))}</pre>${output ? `<details class="raw-tool-details"><summary>${tr('tool.completeOutput')} <span aria-hidden="true">↗</span></summary><pre class="tool-output">${escapeHtml(JSON.stringify(output, null, 2))}</pre></details>` : `<p class="muted">${tr('tool.outputUnavailable')}</p>`}</div></details>`;
 }
 
 function renderAgent(result: ChatResult, question: string, submittedContext: {area_id: AreaId; metric: MetricId; period: PeriodId}): void {
@@ -352,23 +472,27 @@ function renderAgent(result: ChatResult, question: string, submittedContext: {ar
   }
   for (const fact of result.facts) groups.get(`${fact.area_id}/${fact.metric}`)!.facts.push(fact);
   for (const comparison of result.calculations) groups.get(`${comparison.area_id}/${comparison.metric}`)!.comparisons.push(comparison);
-  const scope = [...groups.values()].map(group => scopeName(group.area, group.measure)).join(' / ');
+  const researchRecords = result.research?.records ?? [];
+  const researchComparisons = result.research?.comparisons ?? [];
+  const scope = [...groups.values()].map(group => scopeName(group.area, group.measure)).join(' / ') || (researchRecords.length || researchComparisons.length ? t('research.scopeHeading') : t('agent.noScope'));
   const data = [...groups.values()].map(group => {
     const facts = [...group.facts].sort((a,b) => a.period.localeCompare(b.period));
     const previous = facts.find(f => f.period === '2024-YE'), current = facts.find(f => f.period === '2025-YE');
     const comparable = group.comparisons.some(c => c.status === 'available' && c.previous_period === previous?.period && c.current_period === current?.period);
     const targetPeriod = facts.at(-1)?.period ?? group.comparisons[0]?.current_period;
-    const valueCards = facts.map(fact => `<article class="answer-fact ${fact.status}" data-fact-id="${escapeHtml(fact.id)}"><span>${escapeHtml(periodName(fact.period))}</span><strong>${escapeHtml(formatValue(fact))}</strong><small>${escapeHtml(fact.status === 'available' ? 'Reported value' : statusLabel(fact))} · ${escapeHtml(fact.unit)}</small></article>`).join('');
-    return `<section class="answer-market"><div class="answer-market-head"><h3>${escapeHtml(scopeName(group.area, group.measure))}</h3>${targetPeriod ? `<button type="button" class="view-answer-market" data-area="${escapeHtml(group.area)}" data-metric="${escapeHtml(group.measure)}" data-period="${escapeHtml(targetPeriod)}" aria-label="View ${escapeHtml(areaName(group.area))} on map">View on map ↗</button>` : ''}</div><div class="answer-facts">${valueCards}</div>${comparable && previous && current ? answerChart(previous,current) : ''}${group.comparisons.map(c => comparisonBlock(c)).join('')}<p class="answer-definition">${escapeHtml(facts[0]?.definition ?? catalog?.metrics.find(m => m.id === group.measure)?.definition ?? '')}</p>${facts.some(f => f.status !== 'available') ? '<p class="answer-missing">Missing is not zero. No estimate or zero bar is substituted.</p>' : ''}</section>`;
+    const valueCards = facts.map(fact => `<article class="answer-fact ${fact.status}" data-fact-id="${escapeHtml(fact.id)}"><span>${escapeHtml(periodName(fact.period))}</span><strong>${escapeHtml(formatValue(fact))}</strong><small>${escapeHtml(fact.status === 'available' ? t('map.legend.reported') : statusLabel(fact))} · ${escapeHtml(fact.unit)}</small></article>`).join('');
+    return `<section class="answer-market"><div class="answer-market-head"><h3>${escapeHtml(scopeName(group.area, group.measure))}</h3>${targetPeriod ? `<button type="button" class="view-answer-market" data-area="${escapeHtml(group.area)}" data-metric="${escapeHtml(group.measure)}" data-period="${escapeHtml(targetPeriod)}" aria-label="${tr('button.viewAreaOnMap', {area: areaName(group.area)})}">${tr('button.viewOnMap')}</button>` : ''}</div><div class="answer-facts">${valueCards}</div>${comparable && previous && current ? answerChart(previous,current) : ''}${group.comparisons.map(c => comparisonBlock(c)).join('')}<p class="answer-definition">${description(facts[0]?.definition ?? catalog?.metrics.find(m => m.id === group.measure)?.definition ?? '')}</p>${facts.some(f => f.status !== 'available') ? `<p class="answer-missing">${tr('limit.noEstimate')}</p>` : ''}</section>`;
   }).join('');
+  const researchAnswer = researchRecords.length || researchComparisons.length ? `<section class="answer-research"><h3>${tr('research.scopeHeading')}</h3><p class="section-limit">${tr('research.answerScopeLimit')}</p>${researchRecords.map(item => researchRecordCard(item, result.sources, result.evidence)).join('')}${researchComparisons.map(item => researchComparisonCard(item, result.sources, result.evidence)).join('')}</section>` : '';
+  const selectedEvidenceIds = new Set([...result.facts.map(f => f.evidence_id), ...result.calculations.flatMap(c => c.evidence_ids), ...researchRecords.flatMap(r => r.evidence_ids), ...researchComparisons.flatMap(c => c.evidence_ids)]);
   const sourceCards = result.sources.map(source => {
-    const quote = result.evidence.find(e => e.source_id === source.id && result.facts.some(f => f.evidence_id === e.id));
-    return `<article class="answer-source"><div><strong>${escapeHtml(source.publisher)}</strong><span>${escapeHtml(periodName(source.report_period))}</span></div><p>${sourceLink(source, `${source.title} ↗`)}</p><small>Published ${escapeHtml(source.published_at)} · ${escapeHtml(source.verification_status)}</small>${quote ? `<blockquote>“${escapeHtml(quote.quote)}”</blockquote>` : ''}</article>`;
+    const quotes = result.evidence.filter(e => e.source_id === source.id && selectedEvidenceIds.has(e.id));
+    return `<article class="answer-source"><div><strong>${escapeHtml(source.publisher)}</strong><span>${escapeHtml(source.report_period)}</span></div><p>${sourceLink(source, `${source.title} ↗`)}</p><small>${tr('metadata.published')} ${escapeHtml(sourceDate(source.published_at))} · ${escapeHtml(uiCode('status', source.verification_status))}</small>${quotes.map(quote => `<blockquote>“${escapeHtml(quote.quote)}”</blockquote>`).join('')}</article>`;
   }).join('');
   const boilerplate = 'Historical report snapshots, not a live market feed. Interpretation is AI-generated; verified numeric facts and calculations are shown separately.';
   const warnings = result.warnings.filter(w => w !== boilerplate);
   $('.agent-shell').classList.add('has-answer');
-  $('#agent-result').innerHTML = `<article class="answer"><div class="answer-head"><span class="tiny-label">ANSWER SCOPE · FROM RETURNED PYTHON EVIDENCE</span><span class="answer-complete">✓ Evidence returned</span></div><h2 id="answer-scope">${escapeHtml(scope)}</h2><p id="answer-question">${escapeHtml(question)}</p><p class="submitted-context">Map selection at submission: ${escapeHtml(contextName(submittedContext))}. Explicit questions take priority.</p><div class="answer-data">${data}</div><section class="answer-assessment"><span class="tiny-label">AI INTERPRETATION</span><p class="answer-text">${escapeHtml(result.answer)}</p></section>${warnings.length ? `<p class="warning">${escapeHtml(warnings.join(' · '))}</p>` : ''}<section class="tool-activity"><h3>Tools used <span>${result.tool_calls.length} actual ${result.tool_calls.length === 1 ? 'call' : 'calls'}</span></h3>${result.tool_calls.map(call => toolCallBlock(call)).join('')}</section>${sourceCards ? `<section class="answer-sources"><h3>Sources &amp; reported evidence</h3>${sourceCards}</section>` : '<p class="answer-missing">No source-backed value returned for the missing observation.</p>'}${result.notes.length ? `<details class="answer-notes"><summary>Report context · ${result.notes.length} events</summary>${notesBlock(result.notes, result.sources, result.evidence)}</details>` : ''}<footer class="answer-foot">Historical snapshots, not live quotes. Values and changes come from Python; interpretation is AI-generated.<details class="run-details"><summary>Run details</summary><span>Run ${escapeHtml(result.run_id)}</span></details></footer></article>`;
+  $('#agent-result').innerHTML = `<article class="answer"><div class="answer-head"><span class="tiny-label">${tr('agent.answerScope')}</span><span class="answer-complete">${tr('status.evidenceReturned')}</span></div><h2 id="answer-scope">${escapeHtml(scope)}</h2><p id="answer-question">${escapeHtml(question)}</p><p class="submitted-context">${tr('agent.submittedContext', {context: contextName(submittedContext)})}</p><div class="answer-data">${data}${researchAnswer}</div><section class="answer-assessment"><span class="tiny-label">${tr('agent.interpretation')}</span><p class="answer-text">${description(result.answer)}</p></section>${warnings.length ? `<p class="warning">${escapeHtml(warnings.map(value => localizeDescription(value, i18n.language)).join(' · '))}</p>` : ''}<section class="tool-activity"><h3>${tr('agent.toolsUsed')} <span>${tr('agent.actualCalls', {count: result.tool_calls.length})}</span></h3>${result.tool_calls.map(call => toolCallBlock(call)).join('')}</section>${sourceCards ? `<section class="answer-sources"><h3>${tr('agent.sources')}</h3>${sourceCards}</section>` : `<p class="answer-missing">${tr('agent.noSourceValue')}</p>`}${result.notes.length ? `<details class="answer-notes"><summary>${tr('agent.reportEvents', {count: result.notes.length})}</summary>${notesBlock(result.notes, result.sources, result.evidence)}</details>` : ''}<footer class="answer-foot">${tr('agent.footer')}<details class="run-details"><summary>${tr('agent.runDetails')}</summary><span>${tr('agent.run', {id: result.run_id})}</span></details></footer></article>`;
   $('#agent-result').querySelectorAll<HTMLButtonElement>('.view-answer-market').forEach(button => button.addEventListener('click', () => {
     const area = button.dataset.area as AreaId, measure = button.dataset.metric as MetricId, targetPeriod = button.dataset.period as PeriodId;
     if (!catalog?.areas.some(a => a.id === area) || !catalog.metrics.some(m => m.id === measure) || !catalog.periods.some(p => p.id === targetPeriod)) return;
@@ -382,33 +506,28 @@ function renderAgent(result: ChatResult, question: string, submittedContext: {ar
 function sourceCandidateBlock(source: SourceCandidate): string {
   const href = safeUrl(source.url);
   const title = source.title || source.url;
-  return `<article class="answer-source source-candidate" data-candidate-id="${escapeHtml(source.id)}"><p>${href ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(title)} ↗</a>` : escapeHtml(title)}</p><small>Unverified search metadata · document coverage not verified</small>${source.snippet ? `<p>${escapeHtml(source.snippet)}</p>` : ''}<small>Date hint (unverified): ${escapeHtml(source.date_hint || 'Not returned')}</small><details><summary>Original URL &amp; complete occurrence provenance</summary><p>${escapeHtml(source.url)}</p><pre class="tool-output">${escapeHtml(JSON.stringify(source.occurrences, null, 2))}</pre></details></article>`;
+  return `<article class="answer-source source-candidate" data-candidate-id="${escapeHtml(source.id)}"><p>${href ? `<a href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">${escapeHtml(title)} ↗</a>` : escapeHtml(title)}</p><small>${tr('discovery.metadataLimit')}</small>${source.snippet ? `<p>${escapeHtml(source.snippet)}</p>` : ''}<small>${tr('discovery.dateHint')}: ${escapeHtml(source.date_hint || t('status.notReturned'))}</small><details><summary>${tr('discovery.provenance')}</summary><p>${escapeHtml(source.url)}</p><pre class="tool-output">${escapeHtml(JSON.stringify(source.occurrences, null, 2))}</pre></details></article>`;
 }
 function sourcePoolBlock(pool: SourcePool): string {
-  return `<p class="source-pool-summary">${pool.source_count} exact URL strings · ${pool.occurrence_count} captured occurrences</p><p class="warning">Not verified market observations. URL variants, old and irrelevant results are retained; counts do not prove business coverage. Selected map area is not document geography.</p><div class="source-topics">${pool.topics.map(topic => `<div class="source-topic"><strong>${escapeHtml(topic.label)}</strong><small>${escapeHtml(topic.status)} · ${topic.source_count} requested-topic URL strings</small></div>`).join('')}</div><details class="complete-source-pool"><summary>Complete captured pool · all URLs and provenance</summary>${pool.candidates.map(sourceCandidateBlock).join('') || '<p class="muted">No candidates recorded. This is not a market zero or a completed search.</p>'}</details>`;
+  return `<p class="source-pool-summary">${tr('discovery.poolSummary', {sources: pool.source_count, occurrences: pool.occurrence_count})}</p><p class="warning">${tr('discovery.poolLimit')}</p><div class="source-topics">${pool.topics.map(topic => `<div class="source-topic"><strong>${escapeHtml(topicName(topic.id))}</strong><small>${escapeHtml(uiCode('status', topic.status))} · ${tr('discovery.topicCount', {count: topic.source_count})}</small></div>`).join('')}</div><details class="complete-source-pool"><summary>${tr('discovery.completePool')}</summary>${pool.candidates.map(sourceCandidateBlock).join('') || `<p class="muted">${tr('discovery.noCandidates')}</p>`}</details>`;
 }
 function renderDiscovery(result: DiscoveryResult, question: string, area: AreaId): void {
   $('.agent-shell').classList.add('has-answer');
-  $('#agent-result').innerHTML = `<article class="answer"><div class="answer-head"><span class="tiny-label">SOURCE DISCOVERY · METADATA ONLY</span><span>${escapeHtml(result.status)}</span></div><h2>AI source screening · unverified</h2><p id="answer-question">${escapeHtml(question)}</p><p class="submitted-context">Map selection at submission: ${escapeHtml(areaName(area))}. Source coverage and building location remain unverified.</p><section class="answer-assessment"><p class="answer-text">${escapeHtml(result.assessment)}</p></section><p class="metadata">Google: ${escapeHtml(result.provider_states.serpapi_google.status)} · Native Web Search: ${escapeHtml(result.provider_states.codex_native.status)} · Native internal HTTP count: unknown</p><section class="answer-sources"><h3>AI-selected leads · not source verification</h3>${result.pool.candidates.filter(source => result.selected_candidate_ids.includes(source.id)).map(sourceCandidateBlock).join('') || '<p class="muted">No bound candidates selected by this screening.</p>'}</section>${sourcePoolBlock(result.pool)}<section class="tool-activity"><h3>Actual Google tool execution</h3>${result.tool_calls.map(toolCallBlock).join('')}</section><p class="warning">${escapeHtml(result.warnings.join(' · '))}</p><footer class="answer-foot">No source snippet has updated formal market metrics or map geometry. Run ${escapeHtml(result.run_id)}</footer></article>`;
+  $('#agent-result').innerHTML = `<article class="answer"><div class="answer-head"><span class="tiny-label">${tr('discovery.title')}</span><span>${escapeHtml(uiCode('status', result.status))}</span></div><h2>${tr('discovery.screening')}</h2><p id="answer-question">${escapeHtml(question)}</p><p class="submitted-context">${tr('discovery.context', {area: areaName(area)})}</p><section class="answer-assessment"><p class="answer-text">${description(result.assessment)}</p></section><p class="metadata">Google: ${escapeHtml(uiCode('status', result.provider_states.serpapi_google.status))} · ${tr('discovery.nativeSearch')}: ${escapeHtml(uiCode('status', result.provider_states.codex_native.status))} · ${tr('discovery.internalHttp')}: ${tr('status.unknown')}</p><section class="answer-sources"><h3>${tr('discovery.selectedLeads')}</h3>${result.pool.candidates.filter(source => result.selected_candidate_ids.includes(source.id)).map(sourceCandidateBlock).join('') || `<p class="muted">${tr('discovery.noSelectedCandidates')}</p>`}</section>${sourcePoolBlock(result.pool)}<section class="tool-activity"><h3>${tr('discovery.googleExecution')}</h3>${result.tool_calls.map(toolCallBlock).join('')}</section><p class="warning">${escapeHtml(result.warnings.join(' · '))}</p><footer class="answer-foot">${tr('discovery.notPublished')} ${tr('agent.run', {id: result.run_id})}</footer></article>`;
 }
 $('#view-source-pool').addEventListener('click', async () => {
   if (chatBusy) return;
   chatBusy = true;
   setAgentExpanded(true);
-  $('#agent-result').innerHTML = '<p class="muted">Reading existing candidate archive · no search or model call…</p>';
+  presentAgent(() => { $('#agent-result').innerHTML = `<p class="muted">${tr('loading.sourcePool')}</p>`; });
   try {
     const pool = await api<SourcePool>('/api/discovery');
     $('.agent-shell').classList.add('has-answer');
-    $('#agent-result').innerHTML = `<article class="answer"><h2>Archived source candidates</h2>${sourcePoolBlock(pool)}<p class="metadata">Read-only inventory; no search or model executed.</p></article>`;
-  } catch (error) { $('#agent-result').innerHTML = `<p class="alert error">${escapeHtml(message(error))}</p>`; }
+    presentAgent(() => { $('#agent-result').innerHTML = `<article class="answer"><h2>${tr('discovery.archivedCandidates')}</h2>${sourcePoolBlock(pool)}<p class="metadata">${tr('discovery.readOnly')}</p></article>`; });
+  } catch (error) { const detail = message(error); presentAgent(() => { $('#agent-result').innerHTML = `<p class="alert error">${escapeHtml(detail)}</p>`; }); }
   finally { chatBusy = false; }
 });
-$('#agent-mode').addEventListener('change', () => {
-  const discovery = ($('#agent-mode') as HTMLSelectElement).value === 'discovery';
-  $('.suggestions').hidden = discovery;
-  $('.agent-privacy').textContent = discovery ? 'Explicit request only: Google + native Web Search collect unverified metadata. An authorized budget receipt is required. No market values or geometry are published.' : 'Uses reported evidence. Only sends a request when you ask.';
-  ($('#question') as HTMLInputElement).placeholder = discovery ? 'Find original London office source reports…' : 'Ask about this market…';
-});
+$('#agent-mode').addEventListener('change', renderAgentMode);
 $('#chat-form').addEventListener('submit', async event => {
   event.preventDefault();
   if (chatBusy) return;
@@ -424,21 +543,21 @@ $('#chat-form').addEventListener('submit', async event => {
   $('#chat-form').setAttribute('aria-busy', 'true');
   const button = $('#chat-form').querySelector<HTMLButtonElement>('button[type=submit]');
   if (button) button.disabled = true;
-  $('#agent-result').innerHTML = '<p class="alert loading" role="status">Waiting for the assistant… Completed Python tool activity and returned data will appear with the answer.</p>';
+  presentAgent(() => { $('#agent-result').innerHTML = `<p class="alert loading" role="status">${tr('loading.assistant')}</p>`; });
   try {
     if (discoveryMode) {
       const response = await api<DiscoveryResult>('/api/discovery', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({question, ...(catalog?.discovery_topics ? {topic_ids: catalog.discovery_topics.map(topic => topic.id)} : {}), context: {area_id: submittedContext.area_id}})});
-      renderDiscovery(response, question, submittedContext.area_id);
+      presentAgent(() => renderDiscovery(response, question, submittedContext.area_id));
     } else {
       const response = await api<ChatResult>('/api/chat', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({question, ...(sessionId ? {session_id: sessionId} : {}), context: submittedContext})});
-      if (response.status !== 'completed') throw new Error('Assistant did not complete its evidence-backed run.');
+      if (response.status !== 'completed') throw new Error(t('error.assistantIncomplete'));
       sessionId = response.session_id;
-      renderAgent(response, question, submittedContext);
+      presentAgent(() => renderAgent(response, question, submittedContext));
     }
   } catch (error) {
     const detail = message(error);
     const login = /login|not.logged|not_authenticated|authentication|unauthorized|subscription.auth/i.test(detail);
-    $('#agent-result').innerHTML = `<p class="alert error" role="alert">${escapeHtml(detail)}${login ? '<br>To sign in to the dedicated runtime, run <code>uv run london-office login</code> in the project root, then retry.' : ''}</p>`;
+    presentAgent(() => { $('#agent-result').innerHTML = `<p class="alert error" role="alert">${escapeHtml(detail)}${login ? `<br>${tr('error.loginHint', {command: 'uv run london-office login'})}` : ''}</p>`; });
   } finally { chatBusy = false; $('.agent-shell').classList.remove('is-running'); $('#chat-form').setAttribute('aria-busy', 'false'); if (button) button.disabled = false; }
 });
 $('.suggestions').querySelectorAll<HTMLButtonElement>('button').forEach(button => button.addEventListener('click', () => {
@@ -451,16 +570,14 @@ function setAgentExpanded(expanded: boolean): void {
   $('#agent-expansion').hidden = !expanded;
   $('.agent-shell').classList.toggle('expanded', expanded);
   $('#open-agent').setAttribute('aria-expanded', String(expanded));
-  $('#open-agent').title = expanded ? 'Close research assistant' : 'Open research assistant';
+  $('#open-agent').title = t(expanded ? 'button.closeAssistant' : 'button.openAssistant');
   if (!expanded && $('.agent-shell').contains(document.activeElement)) $('#open-agent').focus();
 }
 function renderCameraState(state: CameraState | undefined = cameraState): void {
   if (!state) return;
   cameraState = state;
-  $('#camera-caption').textContent = `${state.pitch < 1 ? 'TOP-DOWN' : '3D CITY'} · ${state.pitch.toFixed(0)}° · Z ${state.zoom.toFixed(1)}`;
+  renderCameraCaption();
   $('#compass-arrow').style.transform = `rotate(${-state.bearing}deg)`;
-  const layerStatus = document.querySelector('#layer-background-status');
-  if (layerStatus) layerStatus.textContent = `${$('#map-state').textContent} · source-provided geometry, not height surveys`;
   const target = $('#map-directions');
   if (!catalog) return;
   const width = $('#map').clientWidth, height = $('#map').clientHeight;
@@ -481,7 +598,7 @@ function renderCameraState(state: CameraState | undefined = cameraState): void {
       else if (mobile) y = rail.top-viewport.top-35;
     }
     const arrow = left ? '←' : right ? '→' : point.y < 0 ? '↑' : '↓';
-    return `<button type="button" class="edge-direction ${left ? 'edge-left' : right ? 'edge-right' : 'edge-center'}" data-focus="${area.id}" style="left:${x}px;top:${y}px" aria-label="Focus ${escapeHtml(area.name)}">${escapeHtml(area.name)} <span aria-hidden="true">${arrow}</span></button>`;
+    return `<button type="button" class="edge-direction ${left ? 'edge-left' : right ? 'edge-right' : 'edge-center'}" data-focus="${area.id}" style="left:${x}px;top:${y}px" aria-label="${tr('button.focusArea', {area: area.name})}">${escapeHtml(area.name)} <span aria-hidden="true">${arrow}</span></button>`;
   }).join('');
   target.querySelectorAll<HTMLButtonElement>('button').forEach(button => button.addEventListener('click',()=>selectArea(button.dataset.focus as AreaId)));
 }
@@ -559,6 +676,9 @@ $('#top-view').addEventListener('click',()=>map.setPitch(0));
 $('#reset-map').addEventListener('click',()=>{ map.reset(); $('#map-tooltip').hidden=true; });
 $('#dismiss-instructions').addEventListener('click',()=>{ $('#map-instructions').hidden=true; });
 $('#map-info-toggle').addEventListener('click',()=>{const info=$('#map-info');info.hidden=!info.hidden;$('#map-info-toggle').setAttribute('aria-expanded',String(!info.hidden));});
+mountLanguageSelector($('#language-settings'), i18n);
+i18n.subscribe(renderLocalizedPresentation);
+renderChrome();
 renderMarket(); renderDetail();
 // Start local I/O before synchronous WebGL setup. Neither response handling nor
 // the workspace's event bindings wait for external styles, glyphs or tiles.

@@ -28,6 +28,41 @@ class RuntimeTests(unittest.TestCase):
         self.assertIn('features.js_repl=false', config.config_overrides)
         self.assertIn('features.shell_tool=false', config.config_overrides)
 
+    def test_sdk_turn_schema_requires_research_lists_while_legacy_answers_remain_valid(self):
+        from tempfile import TemporaryDirectory
+        from threading import Lock
+        from types import SimpleNamespace
+        from london_office.runtime import CodexAdapter
+
+        arguments = {"area": "city", "metric": "prime_rent", "period": "2025-YE"}
+        output = BusinessTools().call("market_query", arguments)
+        legacy = {"answer": "Historical source evidence; not live quotes.",
+            "fact_ids": ["city-prime-2025"], "calculation_ids": [],
+            "source_ids": ["savills-2025-q4"], "warnings": []}
+        with TemporaryDirectory(prefix="london-office-schema-") as directory:
+            trace = Path(directory) / "tools.jsonl"
+
+            def strict_sdk_turn(prompt, *, effort, output_schema):
+                # SDK fixture of the strict structured-output contract, not a model call.
+                self.assertEqual(set(output_schema["required"]), set(output_schema["properties"]))
+                self.assertIn("research_ids", output_schema["required"])
+                self.assertIn("research_comparison_ids", output_schema["required"])
+                self.assertFalse(output_schema["additionalProperties"])
+                trace.write_text(json.dumps({"name": "market_query", "arguments": arguments,
+                    "ok": True, "output": output}) + "\n", encoding="utf-8")
+                result = SimpleNamespace(status=SimpleNamespace(value="completed"),
+                    final_response=json.dumps(legacy), usage=None)
+                return SimpleNamespace(run=lambda: result)
+
+            session = SimpleNamespace(id="offline-schema", trace=trace, lock=Lock(),
+                thread=SimpleNamespace(turn=strict_sdk_turn), close=lambda: None)
+            adapter = CodexAdapter(Settings(run_dir=Path(directory)))
+            with patch.object(adapter, "_new_session", return_value=session):
+                result = adapter.ask("Show historical source evidence.")
+            adapter.close()
+        self.assertEqual(result["research"], {"records": [], "comparisons": []})
+        self.assertEqual(result["facts"][0]["value"], 105.26)
+
     def test_grounded_answer_uses_python_facts_and_rejects_invention(self):
         output = BusinessTools().call("market_query", {"area":"city", "metric":"prime_rent", "period":"2025-YE"})
         events = [{"name":"market_query", "arguments":{}, "ok":True, "output":output}]
@@ -102,6 +137,72 @@ class RuntimeTests(unittest.TestCase):
         answer = {"answer":"历史资料的解释。", "fact_ids":["city-prime-2025"], "calculation_ids":[], "source_ids":["savills-2025-q4"], "warnings":["City rent is £166.61/sq ft."]}
         with self.assertRaises(AgentError):
             grounded_answer(answer,events)
+
+    def test_research_only_brief_is_source_scoped_not_map_bound(self):
+        arguments = {"period": "2025-YE", "area": "canary_wharf"}
+        output = BusinessTools().call("market_brief", arguments)
+        event = {"name": "market_brief", "arguments": arguments, "ok": True, "output": output}
+        for topic in ("macro", "leasing"):
+            with self.subTest(topic=topic):
+                record = next(r for r in output["research"]["records"] if topic in r["topic_ids"] and r["source_ids"])
+                payload = {"answer": "Historical source context; not a value for the selected map area.",
+                    "fact_ids": [], "calculation_ids": [], "research_ids": [record["id"]],
+                    "source_ids": record["source_ids"], "warnings": []}
+                result = grounded_answer(payload, [event])
+                self.assertEqual(result["facts"], [])
+                self.assertEqual(result["calculations"], [])
+                self.assertEqual(result["notes"], [])  # No unrelated area-bound notes from the same publisher.
+                self.assertEqual(result["research"], {"records": [record], "comparisons": []})
+                self.assertIsNone(result["research"]["records"][0]["map_binding"])
+                self.assertEqual({s["id"] for s in result["sources"]}, set(record["source_ids"]))
+                self.assertEqual({e["id"] for e in result["evidence"]}, set(record["evidence_ids"]))
+                self.assertEqual(result["tool_calls"][0]["output"], output)
+
+    def test_research_comparison_requires_every_baseline_and_corroborating_source(self):
+        output = BusinessTools().call("market_brief", {"period": "2025-YE"})
+        comparison = output["research"]["comparisons"][0]
+        event = {"name": "market_brief", "arguments": {"period": "2025-YE"}, "ok": True, "output": output}
+        payload = {"answer": "The Python comparison describes historical research, not the map selection.",
+            "fact_ids": [], "calculation_ids": [], "research_comparison_ids": [comparison["id"]],
+            "source_ids": comparison["source_ids"], "warnings": []}
+        result = grounded_answer(payload, [event])
+        self.assertEqual(result["research"], {"records": [], "comparisons": [comparison]})
+        self.assertEqual({s["id"] for s in result["sources"]}, set(comparison["source_ids"]))
+        self.assertEqual({e["id"] for e in result["evidence"]}, set(comparison["evidence_ids"]))
+        for source in comparison["source_ids"]:
+            with self.subTest(source=source), self.assertRaises(AgentError) as failure:
+                grounded_answer({**payload, "source_ids": [s for s in comparison["source_ids"] if s != source]}, [event])
+            self.assertEqual(failure.exception.code, "missing_citation")
+
+    def test_research_rejects_missing_foreign_and_reused_ids(self):
+        output = BusinessTools().call("market_brief", {"period": "2025-YE"})
+        record = next(r for r in output["research"]["records"] if r["id"] == "news-145")
+        event = {"name": "market_brief", "arguments": {"period": "2025-YE"}, "ok": True, "output": output}
+        payload = {"answer": "Historical context only.", "fact_ids": [], "calculation_ids": [],
+            "research_ids": [record["id"]], "source_ids": record["source_ids"], "warnings": []}
+        with self.assertRaises(AgentError) as failure:
+            grounded_answer({**payload, "source_ids": record["source_ids"][:1]}, [event])
+        self.assertEqual(failure.exception.code, "missing_citation")
+        for override in ({"research_ids": ["foreign-research-id"]},
+                         {"research_comparison_ids": ["foreign-comparison-id"]},
+                         {"source_ids": ["foreign-source-id"]}):
+            with self.subTest(override=override), self.assertRaises(AgentError) as failure:
+                grounded_answer({**payload, **override}, [event])
+            self.assertEqual(failure.exception.code, "invalid_citation")
+        with self.assertRaises(AgentError) as failure:
+            grounded_answer(payload, [{**event, "ok": False}])
+        self.assertEqual(failure.exception.code, "no_business_tool")
+        other = BusinessTools().call("compare_periods", {"area": "city", "metric": "prime_rent",
+            "previous_period": "2024-YE", "current_period": "2025-YE"})
+        with self.assertRaises(AgentError) as failure:
+            grounded_answer(payload, [{"name": "compare_periods", "arguments": {}, "ok": True, "output": other}])
+        self.assertEqual(failure.exception.code, "invalid_citation")
+        with self.assertRaises(AgentError) as failure:
+            grounded_answer({**payload, "research_ids": []}, [event])
+        self.assertEqual(failure.exception.code, "no_selected_evidence")
+        with self.assertRaises(AgentError) as failure:
+            grounded_answer({**payload, "answer": "Rates are 4%."}, [event])
+        self.assertEqual(failure.exception.code, "unsupported_number")
 
 
 if __name__ == "__main__":

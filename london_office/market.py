@@ -21,6 +21,31 @@ class Market:
     def catalog(self) -> dict:
         return {"schema_version": 1, **self._snapshot.catalog()}
 
+    def _research(self) -> dict:
+        """Render the admitted source-scoped context and compute its selected comparisons."""
+        research = self._snapshot.research()
+        if not research:
+            return {}
+        records = {r["id"]: r for r in research["records"]}
+        sources = {s["id"]: s for s in research["sources"]}
+        for comparison in research["comparisons"]:
+            before, after = records[comparison["previous_id"]], records[comparison["current_id"]]
+            compatible = all(before[k] == after[k] for k in ("metric", "unit", "source_geography", "kind"))
+            publishers = {sources[s]["publisher"] for r in (before, after) for s in r["source_ids"]}
+            if not compatible or len(publishers) != 1 or any(r["status"] != "available" for r in (before, after)) or before["kind"] == "forecast":
+                raise ValueError("Research comparison is not a comparable actual same-publisher series")
+            av, bv = Decimal(str(before["value"])), Decimal(str(after["value"]))
+            if comparison["change_unit"] == "percentage points":
+                change = bv - av
+            elif comparison["change_unit"] == "%" and av != 0:
+                change = (bv / av - 1) * 100
+            else:
+                raise ValueError("Undefined research comparison unit or zero baseline")
+            comparison.update(previous_value=before["value"], current_value=after["value"],
+                              previous_window=before["statistical_window"], current_window=after["statistical_window"],
+                              change_value=float(change.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)))
+        return research
+
     def _validate(self, area, metric, period):
         if area is not None and area not in self._areas:
             raise ValueError(f"Unknown area: {area}")
@@ -115,7 +140,8 @@ class Market:
             "unit": definition["unit"], "definition": definition["definition"],
             "observations": observations, "comparisons": comparisons, "sources": sources,
             "evidence": evidence, "notes": notes, "geometry": self._snapshot.geometry(area),
-            "warnings": list(dict.fromkeys(warnings)), "dataset": dict(self._catalog["dataset"])}
+            "warnings": list(dict.fromkeys(warnings)), "dataset": dict(self._catalog["dataset"]),
+            "research": self._research()}
 
     def brief(self, *, period: str = "2025-YE", area: str | None = None) -> dict:
         """A numerical briefing, not an offline simulation of an AI answer."""
@@ -128,7 +154,7 @@ class Market:
             "evidence": unique([e for r in results for e in r["evidence"]]),
             "notes": unique([n for r in results for n in r["notes"]]),
             "warnings": list(dict.fromkeys(w for r in results for w in r["warnings"])),
-            "dataset": dict(self._catalog["dataset"])}
+            "dataset": dict(self._catalog["dataset"]), "research": results[0]["research"]}
 
     def source(self, source_id: str) -> dict:
         return self._snapshot.source(source_id)

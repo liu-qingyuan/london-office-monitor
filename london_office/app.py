@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from .data import ROOT
 from .market import Market
+from .monitoring_status import monitoring_status
 from .runtime import AgentError, CodexAdapter
 from .settings import Settings
 from .source_pool import SourcePool, TOPICS
@@ -87,6 +88,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return market.query(area=area, metric=metric, period=period)
         except ValueError as error:
             return JSONResponse({"status":"error", "error":{"code":"invalid_market_query","message":str(error)}}, status_code=422)
+
+    @app.get("/api/monitoring")
+    def monitoring():
+        return monitoring_status(ROOT / "var/monitoring")
 
     @app.get("/api/discovery")
     def discovery_inventory():

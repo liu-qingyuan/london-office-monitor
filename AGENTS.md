@@ -24,6 +24,14 @@ GitHub Issues only；PR 不进入 triage 或 Ralph。见 `docs/agents/issue-trac
 
 已启用时先执行 `./.feature-docs/run list`，只读相关记录；维护与交付见 `docs/agents/feature-docs.md`。独立小任务可在同一 `main` / worktree 并行，先分配不相交写入文件与单一整合者；共享 Git、完整测试与构建由整合者串行执行。
 
+### Workflow
+
+规划、实施入口及 skills 来源见 `docs/agents/workflow.md`；确认规划不等于授权实施。
+
+### PPT
+
+PPT 成品仅由 Kimi 制作和修改。其他 AI 只维护 Kimi prompt、真实截图和素材说明，不生成／打印／修改演示成品或新增演示生成器。素材入口与 Kimi 成品放置位置见 `presentation/README.md`。
+
 ## 角色与权限
 
 - **编码 Agent**：默认拥有完整开发工具权限，可在授权任务内自主读写项目文件、执行命令、测试和调试，不需要为普通开发操作逐项申请。不继承应用 Agent 的只读或禁 shell 限制；实际工具与系统权限由宿主提供，本文件不提升操作系统权限。工具权限不等于扩大当前任务范围。

@@ -42,15 +42,17 @@ test('nine icons are visible by default and the same glass bar expands labels on
   expect(chats).toEqual([]);
 });
 
-test('topic selection reuses real observations and report kinds without inventing unconnected series',async({page,request})=>{
+test('topic selection reuses primary observations and admitted research without inventing map-bound series',async({page,request})=>{
   await page.setViewportSize({width:1600,height:1000});
   const source=await (await request.get('/api/market?metric=prime_rent&period=2025-YE')).json() as Market;
   await page.goto('/');
   await openSection(page,'Macro economy');
   await expect(page.locator('#panel-title')).toHaveText('Macro economy');
-  await expect(page.locator('#section-content')).toContainText('Interest rates');
-  await expect(page.locator('#section-content')).toContainText('Not connected');
-  await expect(page.locator('#section-content')).not.toContainText('£');
+  const macro=page.locator('[data-research-topic="macro"]');
+  await expect(macro).toContainText('Connected');
+  await expect(macro).toContainText('3.75');
+  await expect(macro.locator('.research-card[data-research-id]')).toHaveCount(source.research!.records.filter(r=>r.topic_ids.includes('macro')).length);
+  await expect(macro).not.toContainText('£');
   await expect(page.locator('.area-panel')).toBeHidden();
   await expect(page.locator('.detail-panel')).toBeHidden();
   await expect(page.locator('.workspace-nav-item[aria-pressed="true"]')).toHaveCount(1);
@@ -63,8 +65,11 @@ test('topic selection reuses real observations and report kinds without inventin
   await openSection(page,'Vacancy & availability');
   await expect(page.locator('#detail-content .snapshot-chart')).toContainText('7%');
   await expect(page.locator('#detail-content .snapshot-chart')).toContainText('Unit: %');
-  await expect(page.locator('#section-content')).toContainText('Availability ratio');
-  await expect(page.locator('#section-content')).toContainText('Not connected');
+  const vacancy=page.locator('[data-research-topic="vacancy"]');
+  await expect(vacancy).toContainText('Connected');
+  const missingAvailability=source.research!.records.filter(r=>r.topic_ids.includes('vacancy')&&r.status==='missing');
+  expect(missingAvailability.length).toBeGreaterThan(0);
+  for(const row of missingAvailability) await expect(vacancy.locator(`[data-research-id="${row.id}"]`)).toContainText('Missing — not zero');
   for (const [label,kind] of [['Leasing activity','report_leasing_event'],['Supply pipeline','report_supply_context'],['Demand drivers','report_demand_driver'],['News & events',null]] as const) {
     await openSection(page,label);
     const expected=source.notes.filter(n=>kind===null||n.kind===kind);

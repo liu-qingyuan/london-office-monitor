@@ -50,6 +50,8 @@ export class MarketMap {
   private market: Market | null = null;
   private areas: Area[] = [];
   private selected: AreaId = 'city';
+  private selectionLabel = 'SELECTED';
+  private labelFont = 'Arial, sans-serif';
   private basemapStatus: BasemapStatus = 'loading';
   private timer: ReturnType<typeof setTimeout> | null = null;
   private buildingSelectionSignature = '';
@@ -68,6 +70,14 @@ export class MarketMap {
     private readonly onStatus: (message: string) => void,
     private readonly onCamera?: (state: CameraState) => void
   ) {}
+
+  /** Presentation only: no fetch, selection, camera, source or building-colour update. */
+  setLanguagePresentation(selectionLabel: string, fontFamily: string): void {
+    if (this.selectionLabel === selectionLabel && this.labelFont === fontFamily) return;
+    this.selectionLabel = selectionLabel;
+    this.labelFont = fontFamily;
+    this.draw();
+  }
 
   start(): void {
     // performance.now() is relative to this document's navigationStart, including
@@ -333,17 +343,17 @@ export class MarketMap {
       new TextLayer<Area>({
         id: 'illustrative-area-labels', data: this.areas, pickable: false,
         parameters: {depthCompare: 'always', depthWriteEnabled: false},
-        getPosition: area => area.center, getText: area => area.id === this.selected ? `${area.name} / SELECTED` : area.name,
+        getPosition: area => area.center, getText: area => area.id === this.selected ? `${area.name} / ${this.selectionLabel}` : area.name,
         getColor: area => area.id === this.selected ? [255, 215, 123, 255] : [229, 247, 245, 255],
         getSize: 14, sizeUnits: 'pixels', billboard: true,
-        fontFamily: 'Arial, sans-serif', fontWeight: 700,
+        fontFamily: this.labelFont, fontWeight: 700, characterSet: 'auto',
         getTextAnchor: area => {
           const point = this.map?.project(area.center);
           const halfWidth = (area.name.length + (area.id === this.selected ? 11 : 0)) * 4.6 + 9;
           return point && point.x < halfWidth ? 'start' : point && point.x > this.container.clientWidth - halfWidth ? 'end' : 'middle';
         }, getAlignmentBaseline: 'center',
         background: true, getBackgroundColor: area => area.id === this.selected ? [37, 34, 25, 245] : [15, 39, 50, 229], backgroundPadding: [9, 6],
-        updateTriggers: {getText: [this.selected], getColor: [this.selected], getBackgroundColor: [this.selected], getTextAnchor: [this.selected,this.camera(),this.container.clientWidth]}
+        updateTriggers: {getText: [this.selected,this.selectionLabel,this.labelFont], getColor: [this.selected], getBackgroundColor: [this.selected], getTextAnchor: [this.selected,this.camera(),this.container.clientWidth]}
       })
     ]});
   }

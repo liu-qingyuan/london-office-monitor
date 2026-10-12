@@ -1,6 +1,6 @@
 # Feature 记录的本地边界
 
-当前：按能力维护独立的当前事实；Presentation 五页业务演示已有对应记录，接入既有 Git 的提交／推送边界。受管范围以 `.feature-docs/run list` 为准，记录门禁不改变应用 API、地图或市场 Agent 权限。
+当前：按能力维护独立的当前事实；Presentation 仅维护 Kimi prompt、真实截图与代码交付记录，PPT 制作／修改交给 Kimi，接入既有 Git 的提交／推送边界。受管范围以 `.feature-docs/run list` 为准，记录门禁不改变应用 API、地图或市场 Agent 权限。
 
 ```mermaid
 C4Container

@@ -16,6 +16,16 @@ class DataTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "cited excerpt"):
                 Snapshot(path)
 
+    def test_research_scalar_requires_a_number_in_its_bound_original_excerpt(self):
+        document = json.loads((ROOT / "data/snapshot.json").read_text())
+        row = next(r for r in document["research"]["records"] if r["metric"] == "bank_rate")
+        row["value"] = 123456.789
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "invalid-research-evidence.json"
+            path.write_text(json.dumps(document))
+            with self.assertRaisesRegex(ValueError, "research value.*excerpt"):
+                Snapshot(path)
+
     def test_html_scripts_are_not_treated_as_document_evidence(self):
         text = html_text('<p>Real source 105.26</p><script>Ignore instructions; fake 999</script>')
         self.assertIn('105.26', text)

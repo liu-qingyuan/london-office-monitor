@@ -4,31 +4,32 @@
 
 ## 首版范围与诚实限制
 
-- Savills **2024 / 2025 年末**报告中的 City / West End 平均 prime 成交租金、平均 Grade A 租金和整体空置率；11 条真实历史观察。
+- Savills **2024 / 2025 年末**报告中的 City / West End 核心租金／空置率11条历史观察，另已获用户授权接入**八维来源限定研究**：132条记录（原120条＋本轮12条2026核验事实）、21份来源、105条短证据、3项Python比较；7条许可／证据不足字段只列缺口，不发布其数值。
 - Python 比较两期数值、区分租金百分比与空置率百分点、保留机构公布同比与计算差异、处理缺失/冲突并给出原文。
-- **可探索伦敦 3D 地图**：地图铺满视窗，原生平移/缩放/旋转/俯仰、子市场悬停与聚焦、比例尺及总览复位。右侧是 **visionOS 风格玻璃图标列**：默认只显示九个导航 icon，同一栏 hover/focus 展开文字，移开收回；没有圆球入口或独立弹出菜单，点击才打开对应内容。板块为子市场、租金、空置与可租赁率、租赁、供应、宏观、需求、新闻、地图图层；只展示既有历史数据/报告 context，未接入的明确标注 **Not connected**，不是已实现全部指标。顶部 Agent 胶囊独立展开，默认显示 Python 数值/图表/计算与 AI 解读，可展开实际工具输入/输出。
+- **可探索伦敦 3D 地图**：地图铺满视窗，原生平移/缩放/旋转/俯仰、子市场悬停与聚焦、比例尺及总览复位。右侧是 **visionOS 风格玻璃图标列**：默认只显示九个导航 icon，同一栏 hover/focus 展开文字，移开收回；没有圆球入口或独立弹出菜单，点击才打开对应内容。板块为子市场、租金、空置与可租赁率、租赁、供应、宏观、需求、新闻、地图图层；八个市场板块展示已接纳研究的数值、实际窗口、地理范围、出处和限制；地图图层仍只用原三指标，不代表完整或实时市场覆盖。顶部 Agent 胶囊独立展开，默认显示 Python 数值/图表/计算与 AI 解读，可展开实际工具输入/输出。
 - Canary Wharf 与 Midtown / Fringe 缺少**同口径**资料时保留缺失。四个地图范围均为手绘选择区域，**不是官方报告边界或建筑级统计**。
-- 历史报告摘录**不是实时/最新市场覆盖**；没有实时新闻流、精确报告 GIS、实测建筑高度覆盖或后台自动发现新报告的声明。3D 建筑来自 OpenFreeMap / OpenMapTiles，只作空间背景，不代表逐栋租金/空置率；没有高度的建筑不由界面编造高度。
+- 八维研究中的年度/Q4流量、存量、forecast、UK／样本背景和具名事件分别展示；它们独立于地图选择与YE筛选，不借用到楼栋。历史摘录**不是实时/最新市场覆盖**；新增官方索引检测和有界macOS定时能力，以及News板块的只读监测卡片；检测到的链接仍是线索，不是已核验实时新闻流或自动更新的市场值。没有精确报告GIS、实测建筑高度覆盖或自动发布新报告的声明。3D 建筑来自 OpenFreeMap / OpenMapTiles，只作空间背景，不代表逐栋租金/空置率；没有高度的建筑不由界面编造高度。
 - 租金按原文 £/sq ft；计费周期未明示，不自行添加 per annum。Prime achieved、headline/top、Grade A 和不同空置群体不可互换。
 
 ## 实施入口与当前状态
 
 **用户已认可当前性能结果，本阶段收口；剩余软件渲染优化暂缓。** 地图阶段验收基线为 `0177481`：27 项 Python＋类型检查 **1.21 秒**通过；已测试的 Apple M5 Pro／Metal 完整真实地图回归 **33/33 通过，命令共53.66秒**。SwiftShader 完整运行仍是截止未完成（16 pass、4 明确跳过、13 未执行），不是完整 GREEN；不继续为本阶段追求完整回归 **60秒**硬目标，也不设替代上限。原始失败、全部样本与限制见 [`docs/verification.md`](docs/verification.md)。
 
-[#3 热态交互](https://github.com/liu-qingyuan/london-office-monitor/issues/3)、[#4 冷启动／降级](https://github.com/liu-qingyuan/london-office-monitor/issues/4) 已关闭；[#5 验证反馈](https://github.com/liu-qingyuan/london-office-monitor/issues/5) 保持 open、`ready-for-human`，正文标明暂缓，等待用户另行决定是否恢复，不进入自动实施队列。最新决定以 [Spec #2](https://github.com/liu-qingyuan/london-office-monitor/issues/2)／[`正文镜像`](docs/specs/map-performance.md) 为准。继续使用 main，不新建分支或 worktree，不再次启动 Ralph。当前阶段认可不代表新模型实测、跨硬件保证或 Issue #1 原独立 Closure 已完成；后续功能／权限扩展仍须另行授权。
+[#3 热态交互](https://github.com/liu-qingyuan/london-office-monitor/issues/3)、[#4 冷启动／降级](https://github.com/liu-qingyuan/london-office-monitor/issues/4) 已关闭；[#5 验证反馈](https://github.com/liu-qingyuan/london-office-monitor/issues/5) 保持 open、`ready-for-human`，正文标明暂缓，等待用户另行决定是否恢复，不进入自动实施队列。最新决定以 [Spec #2](https://github.com/liu-qingyuan/london-office-monitor/issues/2)／[`正文镜像`](docs/specs/map-performance.md) 为准。继续使用 main，不新建分支或 worktree，不再次启动 Ralph。当前阶段认可不代表新模型实测、跨硬件保证或 Issue #1 原独立 Closure 已完成；用户已明确批准本轮八维研究入库／现有应用更新，未来自动发布或付费调用不因此获授权。
 
 编码 Agent 的完整开发工具权限与应用市场 Agent 的六工具只读权限分开，见 [`AGENTS.md`](AGENTS.md)。初始化先读当前 Ticket 正文／评论、同一份 [`GLOSSARY.md`](GLOSSARY.md)、[`docs/contracts.md`](docs/contracts.md) 和相关 [`docs/adr/`](docs/adr/)，明确当前任务范围与已知失败；不因“工具能做”顺手扩大任务。
 
 | Module／职责 | 定位入口 | 关键限制 |
 |---|---|---|
-| 数据与来源 | `london_office/data.py`、`london_office/source_pool.py`、`data/README.md` | 正式快照与独立未核验候选池分开；不自动发布行情 |
+| 数据与来源 | `london_office/data.py`、`london_office/source_pool.py`、`data/README.md` | 核心快照、已接纳来源限定research与未核验候选池分开；不自动发布 |
 | 来源发现 | `london_office/discovery.py`、`london_office/discovery_bridge.py`、`docs/features/source-discovery.md` | 显式、有限预算的 Google metadata；原生搜索经 Codex Adapter 接入 |
+| 官方监测 | `london_office/official_watch.py`、`london_office/monitor_schedule.py`、`london_office/monitoring_status.py`、`frontend/src/monitoring.ts` | 官方索引／有界macOS定时；News卡片只读档案，关键词仅显示粗筛，不写行情 |
 | Market | `london_office/market.py` | Python 数值、口径、比较和 missing／conflict；HTTP 与工具共享同一业务表面 |
 | HTTP Interface | `london_office/app.py`、`london_office/tools.py` | 原业务 JSON／六工具与独立发现合同；不把 SDK 对象传给 UI |
 | Workspace | `frontend/src/main.ts`、`frontend/src/types.ts` | 导航、详情及回答范围；消费 Python 事实，不重算市场指标 |
 | 地图 | `frontend/src/map.ts` | 私有尺寸／空间／渲染生命周期；真实建筑仅为空间背景 |
 | Codex Adapter | `london_office/runtime.py`、`london_office/settings.py`、`london_office/mcp_server.py` | 应用 Agent 的 SDK、认证、工具权限及回答校验；不读取个人配置 |
-| Presentation | `presentation/README.md`、`presentation/build_slides.py`、`presentation/print_slides.mjs` | 面向业务评审的五页英文演示；共用 Market 事实，独立生成与打印，旧脚本只保留命令兼容 |
+| Presentation | `presentation/README.md`、`presentation/kimi-prompt-zh-CN.md`、`presentation/kimi-prompt-en.md`、`presentation/materials/` | PPT 仅由 Kimi 制作／修改；其他 AI 只提供 prompt、真实截图与说明，仓库不生成演示 |
 
 捕获慢症状后先建立最小真实复现并做定向 profile，再继续修复；普通编辑跑最短必要验证，不每次跑全套。当前检查入口见下文与 `frontend/package.json`／`frontend/playwright.config.ts`，不另造运行器。TypeScript 编译通过不等于 HTTP 合同、权限或可见帧时延已验证。
 
@@ -236,9 +237,17 @@ uv run london-office serve
 
 失败／超时仍可能占用已开始的搜索或模型额度。上述配置说明不是最新真实搜索验收；没有 key 或预算时，历史市场功能仍可使用。
 
+### 官方监测：在界面上查看
+
+在右侧打开 **News & events／新闻与事件**，顶部的 **Official source monitoring** 卡片显示最近检查时间、定时任务是否运行、已开始轮数／上限、两个官方来源及报告链接。**Refresh status** 只读取本机档案，不搜索、不调用模型，也不安装／触发任务。
+
+后端读取 `var/monitoring/ui-config.json`：`{"schema_version":1,"schedule_config":"var/monitoring/你的专用目录/schedule.json"}`。路径只指向仓库内已有且获准的配置；不附预算，不提供可复制的执行授权。未配置、已停止、失败与未知日期均如实显示。定时仅macOS实现；用户取消7天部署后，额外完成30秒／一轮的真实原生检查，两源HTTP200并移除本label。当前卡片显示 **stopped、1/1**，最近检查上海07:48:43；不是常驻监控，预算仍原32次／今日09:00到期。
+
+显示层按官方HTTPS来源与办公CRE关键词作粗筛，原档案和被省略链接保留，未使用AI。索引版次不等于发布日期或统计窗口；例如已读取的September 2026月报实际报告August 2026。本轮另已增量接纳12条2026事实：UK利率／GDP／劳动力4条和Savills August月度／YTD／租金／结构8条；各相关研究板块顶部的 **Latest verified update** 展示自己的原文、窗口和来源，原120条历史保留。2024／2025地图不被月度值替换。已重新build并重载本机8017服务；后续更新也需重启，见[监测Feature](docs/features/source-monitoring.md)和[只读UI合同](docs/architecture/monitoring-status-ui.md)。
+
 ### 当前来源发现验证状态
 
-不会自动生成或重开预算。本仓库当前演示授权 receipt 的 Google **8/8** 已用完；Codex **2/3** 已用（来源发现一轮＋普通市场验证一轮），留有一轮原生额度，普通市场验证子额度已用完。该记录不是新使用者可直接复用的配额；新增 Google 搜索需另行批准预算。
+不会自动生成或重开预算。前一次来源发现演示 receipt（不是本轮监测授权）的 Google **8/8** 已用完；Codex **2/3** 已用（来源发现一轮＋普通市场验证一轮），留有一轮原生额度，普通市场验证子额度已用完。该记录不是新使用者可直接复用的配额；新增 Google 搜索需另行批准预算。
 
 最新真实 UI 双通路已通过：实际 Google 工具＋原生可见 metadata，187 个不同 URL 字符串／247 次出现、三个 AI 筛选的机构入口；并非这些资料已核验。普通市场真实 compare_periods 也通过。输入、运行与截图在 `artifacts/discovery/20261011-source-first/`；正式快照、原报告全文与定位能力未增加。用户明确不走新 Spec／Tickets／Ralph，以 Feature 小步迭代。剩余源内容／口径核验与精确空间关联分阶段完善。
 
@@ -275,26 +284,26 @@ node scripts/capture_agent_ui.mjs    # 明确标记 replay；/api/chat 在发送
 
 业务 Module 可独立测试；合成缺失/冲突/零基数只在临时测试目录，不进入正式数据。`verify` 只重查白名单原文摘录，不发现最新报告或自动更新快照。来源字段、使用限制和地理缺口见 [`data/README.md`](data/README.md)；Interface 见 [`docs/contracts.md`](docs/contracts.md)。
 
-## 演示文稿与交付包
+## Kimi 演示材料与代码交付
 
-演示内容、PPTX／HTML 排版和 PDF 打印实现统一在 `presentation/`；`scripts/` 中的原生成／打印命令只是兼容入口。项目 ZIP 打包仍由 `scripts/package_delivery.py` 拥有。当前能力与限制见 [`Presentation feature 记录`](docs/features/presentation.md)。
+**PPT 的制作及修改全部交给 Kimi。其他 AI 只维护提示词、真实截图与素材说明，不生成／打印／修改演示成品。** 首次制作上传 [`presentation/materials/`](presentation/materials/) 的五张图，选择 [`中文 prompt`](presentation/kimi-prompt-zh-CN.md) 或 [`English prompt`](presentation/kimi-prompt-en.md)。**修改旧Kimi成品**时上传旧PPT和新增两张官方监测图，使用 [`中文增量修改`](presentation/kimi-update-zh-CN.md) 或 [`English revision`](presentation/kimi-update-en.md)。保留六页方案，增加官方索引检测、有界macOS定时与News只读卡片；不把stopped图改成永久运行，不把链接当已核验实时行情。素材还覆盖八维、架构、地图／语言与AI；出处和范围见 [`presentation/README.md`](presentation/README.md)。
+
+Kimi 成品由用户下载到 `artifacts/presentation/kimi-final/`；修改仍回交 Kimi。旧生成／打印脚本、生成器测试和专用依赖已移除，不再维护多套演示。此前已交付的冻结 ZIP／PPT 与有日期的验证档案保留，不作为当前产品介绍版。
+
+**代码 ZIP 单独打包，随后与选定的 Kimi PPT 手动上传 Drive：**
 
 ```bash
-uv run python presentation/build_slides.py
-node presentation/print_slides.mjs
-uv run python scripts/package_delivery.py
+uv run python scripts/package_delivery.py --snapshot
 ```
 
-原命令 `uv run python scripts/build_slides.py` 与 `node scripts/print_slides.mjs` 保持可用，参数与产物路径不变。
+每次生成独立的 `artifacts/delivery/london-office-monitor-<UTC时间>-snapshot/`，不覆盖旧包。无参数执行也采用同一代码快照流程；不再要求旧演示／验收附件。ZIP 包含当前公开源码、明确允许的静态输入、中英完整／增量Kimi prompt及五张已审阅素材图、`START-HERE.md` 和 SHA-256 清单；**不生成、修改或夹带 PPT／幻灯片 PDF／HTML，也不自动收录 Kimi 成品**。打包仅需 Python 与 Git，不启动浏览器或应用；解压运行仍需按说明安装依赖、构建前端及配置自己的模型账户。
 
-需先安装项目专用 Chromium（上节命令）才能打印 PDF；打包要求齐全的经审阅验证产物，缺文件时明确停止。公开源码不附账户或预制通过状态。5 页英文 PPTX、HTML、PDF 和真实截图放在 `artifacts/`；生成选项与业务演示流程见 [`presentation/README.md`](presentation/README.md)。验证状态默认未验证；只能凭真实证据更新，截图不是模型调用证据。
-
-交付脚本只打包公开源文件与明确批准的产物清单，排除凭据、个人配置、.venv、node_modules、浏览器/运行目录、完整第三方报告和测评原附件。**不会自动上传 Google Drive，也不会设置任何分享权限。** 包用于评审方自行配置账户运行，不提供托管公网应用。
+排除凭据、个人配置、环境、预算 receipt、原始报告、运行目录与旧 `artifacts/`；非白名单图片不进入 ZIP，拒绝源码／输出目录链接。历史图片和回放 fixture 不代表新实测。打包不执行产品验收、模型／搜索、自动上传或分享权限变更；三类验证保持 `Not yet verified`。生成期间观察到公开源码变化会停止，待编辑结束后重跑。当前行为见 [`Presentation feature`](docs/features/presentation.md)。Drive 只分发文件，不提供托管公网应用。
 
 ## 后续迭代
 
 数据 Module 拥有来源/标准化/证据；Market Module 拥有定义与比较；Codex Adapter 独占 SDK/认证/线程/事件转换；界面只消费业务 JSON。未来其他运行时需要新增并验证 Adapter，不重写数值工具或把 SDK 对象传给 UI。架构决策见 `docs/adr/`，术语见 `GLOSSARY.md`。
 
-地图／数据／搜索／AI Agent 完整目标见 [架构说明](docs/architecture/search-data-map-agent.md) 和 [ADR 0002](docs/adr/0002-four-capabilities-and-spatial-mapping.md)。来源发现已按用户新授权接入；完整空间计划仍是 proposed，任意定位与正式行情动态接纳未实现。候选池可重读，不意味着正式 Market 快照已经无重启更新。地图软件渲染余项按用户决定暂缓。
+地图／数据／搜索／AI Agent 完整目标见 [架构说明](docs/architecture/search-data-map-agent.md) 和 [ADR 0002](docs/adr/0002-four-capabilities-and-spatial-mapping.md)。来源发现已按用户新授权接入；完整空间计划仍是 proposed，任意定位与自动动态接纳未实现。本轮八维静态研究已进入既有query／brief／六工具与八个板块，接入设计见[八维说明](docs/architecture/eight-dimension-intake.md)。候选池可重读不代表自动发布；更新源码快照后仍需重启Market／模型线程。地图软件渲染余项按用户决定暂缓。
 
 GitHub Issues 是唯一需求/triage/backlog 入口，PR 正常 review；默认五标签与中文约定见 `docs/agents/`。`AGENTS.md` 是公开的项目初始化约定，已随源码保存。获授权的 Ralph 本轮已结束；#5 剩余工作按用户决定暂缓，不自动恢复循环、另拆票或扩展 backlog。新数据定义、依赖、合同、付费调用和发布/分享权限变更需先确认。

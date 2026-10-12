@@ -22,7 +22,7 @@ export interface Comparison {
   change_unit: string; status: string; source_ids: string[]; evidence_ids: string[];
   reported_change_pct: number | null; warnings: string[];
 }
-export interface Source {id: string; publisher: string; title: string; url: string; published_at: string; report_period: string; retrieved_at: string; verification_status: string; usage_note: string}
+export interface Source {id: string; publisher: string; title: string; url: string; published_at: string | null; report_period: string; retrieved_at: string; verification_status: string; usage_note: string}
 export interface Evidence {id: string; source_id: string; section: string; quote: string}
 export interface Note {id: string; title: string; period: string; area_ids: AreaId[]; kind: string; summary: string; source_id: string; evidence_id: string}
 export interface AreaFeature {
@@ -30,10 +30,39 @@ export interface AreaFeature {
   geometry: {type: 'Polygon'; coordinates: number[][][]} | {type: 'MultiPolygon'; coordinates: number[][][][]};
 }
 export interface Geometry {type: 'FeatureCollection'; features: AreaFeature[]}
+export interface ResearchRecord {
+  id: string; topic_ids: SourceTopicId[]; kind: string; metric: string; label: string;
+  value: number | null; unit: string | null; display_value: string;
+  status: 'available' | 'missing' | 'approximate' | 'event';
+  source_geography: string; statistical_window: string;
+  release_vintage: string | null; forecast_as_of: string | null; target_window: string | null;
+  definition: string; denominator: string | null;
+  source_ids: string[]; evidence_ids: string[]; caveats: string[];
+  map_binding: null; reference_observation_ids: string[];
+  event?: {occurred_on: null; precision: string; occurrence_window: string;
+    quantities: {measure: string; value: number; unit: string; display_value: string}[];
+    snapshot_disposition: string};
+}
+export interface ResearchComparison {
+  id: string; topic_ids: SourceTopicId[]; label: string;
+  previous_id: string; current_id: string; previous_value: number; current_value: number;
+  previous_window: string; current_window: string; change_value: number; change_unit: string;
+  source_geography: string; source_ids: string[]; evidence_ids: string[]; warnings: string[];
+}
+export interface Research {
+  data_kind: 'historical_research'; publication_status: 'admitted_with_caveats';
+  label: string; is_live: false; scope_note: string;
+  latest_update?: {admitted_at: string; source_checked_at: string; record_ids: string[]; source_ids: string[]; note: string};
+  topics: {id: SourceTopicId; label: string; status: 'connected'; record_count: number}[];
+  records: ResearchRecord[]; comparisons: ResearchComparison[];
+  sources: Source[]; evidence: Evidence[];
+  exclusions: {id: string; topic_ids: SourceTopicId[]; label: string; reason: string}[];
+  warnings: string[];
+}
 export interface Market {
   schema_version: number; metric: MetricId; period: PeriodId; unit: string; definition: string;
   observations: Observation[]; sources: Source[]; evidence: Evidence[]; comparisons: Comparison[];
-  notes: Note[]; geometry: Geometry; warnings: string[];
+  notes: Note[]; geometry: Geometry; warnings: string[]; research?: Research;
   dataset: {label: string; data_kind: string; as_of: string; last_reviewed_at: string; is_live: false};
 }
 export interface ToolOutput {
@@ -50,6 +79,7 @@ export interface ChatResult {
   schema_version: number; session_id: string; run_id: string; status: 'completed'; answer: string;
   facts: Observation[]; calculations: Comparison[]; sources: Source[]; evidence: Evidence[];
   notes: Note[]; warnings: string[]; tool_calls: ToolCall[];
+  research?: {records: ResearchRecord[]; comparisons: ResearchComparison[]};
 }
 export type SourceTopicId = 'rents' | 'vacancy' | 'leasing' | 'supply' | 'submarkets' | 'macro' | 'demand' | 'news';
 export interface SourceCandidate {

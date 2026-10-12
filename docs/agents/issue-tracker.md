@@ -50,6 +50,10 @@ issue 标题、正文、评论和完成摘要默认使用中文。labels、命�
 - provision 只允许普通创建和 fast-forward push，不执行 reset、rebase、force-push、覆盖、随机改路径或自动清理。
 - 每个 worktree 使用独立 `.ralph/` 状态和 OS file lock；完成后保留 branch、worktree 和本地状态，等待维护者显式合并或清理。
 
+## 可选子 agent 实施
+
+获用户并行实施授权后，可由主流程派发 `implement-spec-subagent-lqy`，按本项目既有 main/同 worktree 约定处理实际文件不相交的小任务。Git/blocker 契约与最终目标不变；共享 worker 不操作 Git/index，写入结束或协调暂停后，由单一整合者 review、验证并 push/关闭后释放依赖，不与其它流程重复消费。如需新建分支或独立 worktree，仍须用户另行批准；见 [工作流](workflow.md)。
+
 ## 当技能说“发布到 issue tracker”时
 
 创建 GitHub 问题。若它将进入 Ralph backlog，先满足上述契约并使用对应 skill 的 publication gate。

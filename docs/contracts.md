@@ -1,6 +1,6 @@
 # 首版 Interface 与数据合同（v1）
 
-首版 Market 保留 JSON/GeoJSON 快照、JSONL 工具证据及原三个 HTTP 入口。用户另已批准小步接入显式来源发现、独立 JSON 候选池和隔离工具权限，不走新增 Spec／Tickets／Ralph。以下是跨 Module 合同；Codex 内部对象不进入业务结果。HTTP 仅绑定 localhost，界面和 HTTP 同源。
+Market 保留 JSON/GeoJSON 快照、JSONL 工具证据及既有 HTTP 入口。用户另已批准显式来源发现；2026-10-12 又明确批准八维研究入库并直接更新现有应用，不走新增 Spec／Tickets／Ralph。八维通过既有 query/brief 的加法 `research` 字段接入，六工具名称及搜索权限不变；不是自动发布授权。以下是跨 Module 合同；Codex 内部对象不进入业务结果。HTTP 仅绑定 localhost，界面和 HTTP 同源。
 
 ## 数据与口径
 
@@ -12,7 +12,7 @@
 
 每个 observation：`id, area_id, source_area, metric, period, value, status, unit, definition, billing_period, source_id, evidence_id, data_kind, spatial_granularity`。`status` 为 `available | missing | conflict`；缺失/冲突的单一展示值是 `null`。真实记录的 `data_kind=historical_market`；测试 fixture 不装入正式快照。`spatial_granularity=submarket`，没有建筑级市场值。
 
-每个 source：`id, publisher, title, url, published_at, report_period, retrieved_at, verification_status, usage_note`。每个 evidence：`id, source_id, section, quote`。`verification_status=reviewed_excerpt` 仅表示摘录人工核对过，不表示实时重新抓取。
+每个 source：`id, publisher, title, url, published_at, report_period, retrieved_at, verification_status, usage_note`。研究 source 的 published_at 可为 null 或仅 YYYY-MM；不造发布日期的日精度。每个 evidence：`id, source_id, section, quote`。`verification_status=reviewed_excerpt` 或 `archived_source_evidence_not_live` 都不表示实时重新抓取；研究证据保留 DOM 摘录／图像视觉转录的 basis 与定位，图像 response hash 未捕获时明示。
 
 ## GET /api/catalog
 
@@ -35,7 +35,7 @@
 
 `area` 可省略（四区），未知区域/指标/时期返回 422，不回退到其他口径。结果字段：
 
-- `schema_version, metric, period, unit, definition, observations, sources, evidence, comparisons, notes, geometry, warnings, dataset`。
+- `schema_version, metric, period, unit, definition, observations, sources, evidence, comparisons, notes, geometry, warnings, dataset, research`。
 - `observations` 包含所选区域每区一个展示 observation；缺失/冲突由 Python 标记，不用 0 替代。
 - `comparisons` 为 Python 计算列表：`id, area_id, metric, previous_period, current_period, previous_value, current_value, change_value, change_unit, status, source_ids, evidence_ids, reported_change_pct, warnings`。
 - 租金 change_value 是 `(current / previous - 1) * 100` 四舍五入至两位；空置率是百分点差，不以相对百分比替代。前一期或当前缺失、基数为 0、定义/机构/单位/空间粒度不一致时不计算。值为 0 只在原文确有 0 时成立。
@@ -46,21 +46,36 @@
 
 HTTP 结果中的数字、比较及事实面板都由同一 Python Market Module 生成。前端不重新计算增长率。
 
-## 可视化导航（不扩展业务数据合同）
+## 八维研究：query／brief 的 research
+
+`research` 为同一快照里的已接纳历史研究：`data_kind:"historical_research", publication_status:"admitted_with_caveats", label, is_live:false, scope_note, topics, records, comparisons, sources, evidence, exclusions, warnings`。topics 为八维ID/名称/connected状态/引用记录数；共同事实可引用多个topic，不将各topic计数相加为独立观察数。
+
+用户随后明确要求及时更新已核事实，本批增量接纳12条2026记录而保留原120条。可选 `latest_update:{admitted_at,source_checked_at,record_ids,source_ids,note}` 只标记此次已核接纳集合及真实原文检查时间；不声称所有维度实时覆盖，也不以今日索引检查时间替代原文检查。UI每topic按record_ids将这些记录置顶一次，历史记录原序保留；新标题／说明保持原文，旧三语覆盖不变。Bank Rate决定点、GDP三个月和LFS滚动窗口，Savills September版的August月度／YTD，以及Grade A／prime、未知计费周期分别保留。`historical_research`／`is_live:false`、YE地图periods和六工具仍不变。
+
+每个 record：`id, topic_ids, kind, metric, label, value, unit, display_value, status, source_geography, statistical_window, release_vintage, forecast_as_of, target_window, definition, denominator, source_ids, evidence_ids, caveats, map_binding:null, reference_observation_ids`。status 为 available／missing／approximate／event；后三者的单一 scalar 为 null，近似描述由 display_value保留，不硬换算为精确百分数。年度流量、季度背景、存量、forecast、cohort、UK／样本context、历史事件分别用kind/window表示。原11条observation的研究引用不是11条新增观察。
+
+- 研究含两期以及其他明确统计窗口，**独立于选择的map area/metric/YE period**；UI逐条展示自己的source geography和window，不将UK或Central London背景分配给当前选区。
+- 预测保留目标窗口、release vintage和未知as_of；不借用publication日期或报告标题。24.4m的四年预测不填上下文猜测的年份端点；开工统计窗口未知则不用于年度序列。
+- comparison：`id, topic_ids, label, previous_id, current_id, previous_value, current_value, previous_window, current_window, change_value, change_unit, source_geography, source_ids, evidence_ids, warnings`。本轮仅选择三个同机构可比较实际/描述性系列，Python重新计算相对百分比或百分点；不相加regional rounded displays，不算分类措辞变化的68→77质量空间趋势，不算不同预测目标的同比。
+- event额外含occurred_on（本轮null）、precision、occurrence_window、带独立measure/unit的quantities以及snapshot_disposition；公告日不是签署日，既有Exchange Square notes的补证据不新增净事件计数。
+- sources/evidence嵌套在research，避免污染旧的所选区域来源列表。受明确许可限制的六条背景字段与缺摘录支持的一条Midtown数量只保留exclusions，值和引文未发布。
+- 新研究通过源码快照明确更新/重启生效，不从ignored dossiers或候选池在运行中自动接纳；没有后台自动发布。
+
+## 可视化导航
 
 - 右侧默认完整图标列；hover/focus 仅在同一条玻璃栏展开名称，移开收窄，明确点击才进入内容。没有单一 orb 或独立弹出菜单，导航与内容状态独立。小屏为相同图标的水平可滚动栏，触屏第一触显示名称、下一触选择；键盘和 Escape 可操作。展开导航不改指标，打开任何导航/板块不发送模型请求。
-- 九板块只是信息布局，不表示新增指标或已实现完整测评覆盖。Rents 使用原 prime / Grade A；Vacancy 使用原 overall vacancy，不替代 availability。Map layers 仅选择现有指标镜头，并说明真实城市背景与示意区域。
-- Leasing / Supply / Demand / News 按 Python `notes.kind` 展示既有历史报告 context，不由前端再分类或推算为量化序列。来源原本是 Central London scope 时不展示为当前地图选中区的统计。
-- 未接入的指标/新闻流明确显示 Not connected。该接入状态不创建 observation，不等同于 Python 的 missing/conflict，更不使用 0、估值或虚构趋势。
+- 九板块中八个市场维度读取Python的已接纳research；地图图层仍只有原三指标。Rents／Vacancy／Submarkets保留原地图观察并展示来源限定的研究，季度BNP和Farebrother范围不填原YE地图缺口。
+- Leasing／Supply／Macro／Demand／News显示自己的窗口与范围；原notes仍是历史context，不冒充实时新闻。前端只渲染Python display_value和comparison，不推算序列。
+- 仍缺少的同口径字段、独立availability rate、代表性hybrid/ESG调查与实时新闻流明确说明缺口；不填0、估值或虚构趋势。打开任何板块不搜索或调用模型。
 
 ## POST /api/chat
 
 输入：`{question:string, session_id?:string, context?:{area_id?:string,metric?:string,period?:string}}`。问题长度 1–2000；不存在的会话、区域或口径是显式错误。单会话一次只运行一轮；首版会话仅保存在内存中，服务器重启后失效。
 
-成功结果：`{schema_version:1,session_id,run_id,status:"completed",answer,facts,calculations,sources,evidence,notes,warnings,tool_calls}`。
+成功结果：`{schema_version:1,session_id,run_id,status:"completed",answer,facts,calculations,research:{records,comparisons},sources,evidence,notes,warnings,tool_calls}`。
 
 - `answer` 是模型基于工具证据的**定性解释**；模型自己的 `answer/warnings` 文本不能重写金额、比例、年份或日期等数值（包括拼写数量）。所有数字及其区域/指标/时期/单位/来源绑定仅在 Python 生成的事实、计算与来源对象中展示。这样防止把已见过的年份或其他区域数字误绑成价格。事实/计算卡片从本轮工具返回构造，所选对象的全部来源引用需验证。定性语义仍是 AI 解释，不承诺自动证明每一语义断言。
-- `facts` 是上述 observation；`calculations` 是上述 comparison；`sources/evidence/notes` 同上。
+- `facts` 是上述地图 observation；`calculations` 是上述地图 comparison。模型可另选择本轮工具返回的research_ids／research_comparison_ids；它们的全部source_ids（含baseline／corroboration）必须被引用，不能将旧轮ID当成新轮证据。research-only回答允许，但仍必须实际执行成功的query／brief／compare工具并选择证据。返回research单独展示，不提供无定位研究的View on map。`sources/evidence`合并本轮被引用的原指标与research来源；旧保存回答可缺research。
 - `tool_calls` 是实际 Python 工具执行：`{name,arguments,ok,output}`。`output` 是该次只读工具事件的原始业务 JSON（失败时保留该次业务错误），不是由模型编写，也不是从选中的 `facts` 重建。浏览器显示返回摘要，并可展开精确输入/完整输出；SDK 事件、配置、凭据、trace 路径和账户信息不进入此对象。旧保存的 v1 回答没有 `output` 时，前端明确表示不可用，不伪造工具结果。新增字段不改变请求、endpoint、工具权限或数值 guard；完整本地运行记录仍只在 JSONL（`var/` 不提交）。
 - 地图 `context` 仅是选中范围；明确的 `question` 优先。界面按实际返回的 `facts/calculations` 标出回答范围，保留提交时问题/选择，不把以后变化的地图选择当成旧回答的查询范围。默认展示 Python 数值/单位/时期/比较与来源；模型定性解读单独标注。
 - 工具未执行、结构化回答不合法、引用不在本轮证据中、出现无证据数值、未登录、账户模型不可用、运行超时或预算耗尽均返回清晰错误；不以离线模板伪装模型回答。
@@ -68,17 +83,30 @@ HTTP 结果中的数字、比较及事实面板都由同一 Python Market Module
 
 ## 允许的 Python 业务工具
 
-此处权限约束的是应用里的普通市场问答，不是编码 Agent或下述显式发现 profile；开发角色与任务范围见根 `AGENTS.md`。正式研究接纳／自动发布仍没有执行授权。
+此处权限约束的是应用里的普通市场问答，不是编码 Agent或下述显式发现 profile；开发角色与任务范围见根 `AGENTS.md`。本轮八维静态接纳已获用户明确授权；未来自动接纳／自动发布仍没有授权。
 
 `market_catalog()`、`market_query(area, metric, period)`、`compare_periods(area, metric, previous_period, current_period)`、`market_brief(period, area?)`、`source_details(source_id)`、`verify_source(source_id)`。只读，通过项目内 MCP 暴露；精确批准这些工具，禁止 shell、web search、个人 MCP、外部 Agent。
 
-`verify_source` 只抓取快照白名单中的官方 HTTPS URL、检查短摘录是否仍在原文、记录时间/hash 和缺失摘录。不得接收任意 URL，不自动覆盖快照或保证新报告已经入库。数据更新通过显式 CLI 校验；新增机构/统计定义需按合同确认后再加入。
+`market_brief`经原工具返回八维已接纳历史研究；`source_details`读取已知research source与短摘录。`verify_source`仍只抓取原两份Savills白名单官方HTTPS文档及原摘录；新格式／新机构现场核验尚未实现，明确报错后不联网。不得接收任意URL，不自动覆盖快照或保证新报告已入库。新增资料仍需按授权明确接纳，不自动从搜索metadata发布。
 
 ## 来源候选：GET /api/discovery
 
 只读已保存库存，不搜索、不调用模型、不刷新正式行情。返回 `{schema_version:1,data_kind:"source_candidates",topics,candidates,runs,source_count,occurrence_count,warnings}`。八个 topic 为 rents、vacancy、leasing、supply、submarkets、macro、demand、news；每项包含 id、label、status、source_count、completed_searches。状态为 not_searched、metadata_collected、metadata_unavailable、partial、failed、not_executed，描述执行／metadata，不证明内容、时间或市场覆盖。已完成搜索但零候选的 run 使用 completed_no_candidates；其 completed_searches 仍计入已完成执行，metadata_unavailable 不等于市场缺失或零值。完全相同 URL 去重；片段、镜像及未核验 canonical 不合并，所有出现保留。
 
 Candidate 为 `{id,url,title,snippet,date_hint,content_basis:"search_metadata",verification_status:"unverified_search_metadata",source_geography:{status:"not_verified",granularity:null},requested_topics,occurrences}`。标题／日期可以为 null；日期只是索引 hint，不是核验后的发布日期。occurrence 保留 run_id、provider、query、topic_ids、provider_path／position、provider_query、原 URL／标题／snippet／日期及 ref_id、thread_id、turn_id、tool_item_id；原生 batch query 可为字符串列表，不能推断每个结果属于其中哪条 query。短 ref 只在其完整执行范围内有效。run 保留 provider、用户意图 context、状态、时间和安全错误；选择区不写成候选 area_id。
+
+## 官方监测状态：GET /api/monitoring
+
+2026-10-12 用户授权将最小监测状态接入现有News板块，并使用简单消息粗筛。此入口无请求body或控制参数，只读本仓库专用运行档案；不搜索、不调用模型、不执行install/tick/remove，不改变六个业务工具或正式快照。
+
+返回 `{schema_version:1,data_kind:"monitoring_status",status,last_checked_at,schedule,filter,sources,formal_market_updated:false,warnings}`，status为available／not_configured／unavailable。
+
+- `schedule:{state,interval_seconds,max_runs,run_starts,remaining_runs,expires_at}`。state为running／stopped／exhausted／expired／unknown／unsupported／not_configured；原生状态依据该专用label的真实Schedule.status，而不是历史GREEN或plist存在。后台OS仍可能调用耗尽／到期守卫，不能将其误说成来源请求。
+- `sources:[{id,label,status,checked_at,index_url,new_link_count,links}]`；`links:[{url,title,edition,published_at,observation_period,is_new}]`。来源仅Savills Central London月报索引和Crown Estate新闻索引。未知发布日期／统计窗口是null，edition不可冒充发布日期；is_new只来自实际增量记录，baseline既有链接不标新。最新失败保留上次有效链接与时间，不能显示成无消息。
+- `filter:{mode:"official_office_keywords",ai_used:false,omitted_links}`。精确官方HTTPS host与办公CRE关键词仅决定显示；排除招聘词，但不把普通vacancy当招聘。原档案不删、不因此授予事实／事件接纳。过滤会漏报或误报，不称完整消息覆盖或语义核验。
+- 操作员专用 `var/monitoring/ui-config.json` 仅 `{schema_version:1,schedule_config}`，后者指向仓库内已有schedule JSON，相对路径以仓库根解析；客户端不能提交文件路径。响应不包含本地路径、预算receipt、native_print、凭据或账户字段。无配置是not_configured，损坏／不可读是unavailable，不静默回退成零消息。
+
+前端只在打开News或点击Refresh status时GET；现有源标题保留原文，不加模型筛选或自动翻译。历史research仍保留自己的窗口，地图period仍是2024／2025-YE；检测到2026版次不是新的地图观察。实现与局部图见[监测界面](architecture/monitoring-status-ui.md)。
 
 ## 显式来源发现：POST /api/discovery
 
@@ -92,7 +120,7 @@ Candidate 为 `{id,url,title,snippet,date_hint,content_basis:"search_metadata",v
 
 ## 持久化与认证
 
-- `data/snapshot.json`：版本化 source/evidence/observations/notes/catalog；`data/areas.geojson`：独立的示意选择几何。
+- `data/snapshot.json`：版本化 source/evidence/observations/notes/catalog 与本轮已接纳 research；`data/areas.geojson`：独立的示意选择几何。
 - `var/runs/*.jsonl`：Python 工具执行证据；发现的 typed SDK journal、输入、响应／失败在 `var/runs/discovery/<run>/`。不提交、不放入默认发布包。测试证据经审阅后另行导出脱敏版本。
 - `var/discovery/records/*.json`：schema_version=1 的不可覆盖来源运行记录（data_kind=source_candidate_run、recorded_at、run、occurrences），发布完整记录后才可读；`evidence/<run>/` 保存已脱敏请求、Google 完整 metadata JSON 与执行证据。库存每次重读，不需要 Market 重启；与正式 snapshot／前端 Market 缓存独立。可用 `LONDON_DISCOVERY_DIR` 指向专用运行目录，不引入数据库。
 - SerpAPI key 只由后端处理。直接 CLI 与应用父后端优先使用显式 `SERPAPI_API_KEY`；仅 macOS 可复用既有专用 Keychain service，不在其他系统运行 macOS 命令、不查找其他个人凭据或配置。应用发现 MCP 通过请求级认证 loopback JSON 桥接调用父后端的 Google 工具，实际 key 不进入 SDK 配置、MCP 环境／命令参数、模型或 UI，`SERPAPI_API_KEY` 仍显式清空。桥接绑定 `127.0.0.1` 动态端口，仅接受有界 `{query}`，短期 capability 不能获取 key、改变父后端拥有的预算／topic／context／request ID；禁止代理、重定向与自动重试。启动失败、timeout、完成／异常与 Adapter.close 均关闭监听，已开始的外部调用不恢复额度。普通市场 profile 不使用桥接，HTTP／业务工具 DTO 保持不变。Free quota 只保存白名单字段；原始 account body／邮箱不传给模型，JSON／URL 编码的 key 回显仍在保存／返回前拒绝。

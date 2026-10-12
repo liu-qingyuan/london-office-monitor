@@ -11,6 +11,7 @@ import json
 import math
 import re
 from datetime import datetime, timezone
+from decimal import Decimal
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlparse
@@ -44,6 +45,23 @@ def _quoted_value(row: dict, quote: str) -> float | None:
         return float(both.group(1 if row["source_area"] == "City" else 2))
     match = re.search(re.escape(row["source_area"]) + r".*?([\d.]+)%", quote, re.IGNORECASE)
     return float(match.group(1)) if match else None
+
+
+def _excerpt_numbers(text: str) -> set[Decimal]:
+    """Literal/scaled quoted numbers, not a proof of the surrounding interpretation."""
+    values = set()
+    pattern = r"(?<![\w.])([+\-−]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s*(million|thousand|m|k)?(?!\w)"
+    for match in re.finditer(pattern, text, re.IGNORECASE):
+        number = Decimal(match[1].replace(",", "").replace("−", "-"))
+        values.add(number)
+        scale = {"million": 1_000_000, "m": 1_000_000, "thousand": 1_000, "k": 1_000}.get((match[2] or "").lower(), 1)
+        values.add(number * scale)
+    words = {"zero": 0, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+             "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10}
+    for word, number in words.items():
+        if re.search(r"\b" + word + r"\b", text, re.IGNORECASE):
+            values.add(Decimal(number))
+    return values
 
 
 class _Text(HTMLParser):
@@ -107,6 +125,11 @@ class Snapshot:
         self._evidence = self._index("evidence")
         self._index("observations")
         self._index("notes")
+        self._research = self._data.get("research", {})
+        self._research_sources = {}
+        self._research_evidence = {}
+        if self._research:
+            self._validate_research()
         if self._geometry.get("type") != "FeatureCollection":
             raise ValueError("Geometry must be a FeatureCollection")
         for feature in self._geometry["features"]:
@@ -142,6 +165,75 @@ class Snapshot:
             if note["period"] not in self._periods or not set(note["area_ids"]) <= self._areas.keys():
                 raise ValueError("Report event references unknown geography or period")
 
+    def _validate_research(self):
+        """Validate the explicitly admitted context; it never becomes map observations."""
+        data = self._research
+        if data.get("data_kind") != "historical_research" or data.get("publication_status") != "admitted_with_caveats" or data.get("is_live") is not False:
+            raise ValueError("Research must be explicitly admitted historical context, not a live feed")
+        def index(key):
+            rows = data[key]
+            result = {row["id"]: row for row in rows}
+            if len(result) != len(rows):
+                raise ValueError(f"Duplicate IDs in research {key}")
+            return result
+        topics = index("topics")
+        self._research_sources = index("sources")
+        self._research_evidence = index("evidence")
+        records = index("records")
+        index("comparisons")
+        index("exclusions")
+        for source in self._research_sources.values():
+            parsed = urlparse(source["url"])
+            if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+                raise ValueError("Admitted research source requires a public HTTPS URL")
+            if source["id"] in self._sources and any(source[k] != self._sources[source["id"]][k] for k in ("url", "published_at")):
+                raise ValueError("Research source alias differs from the original source")
+        for item in self._research_evidence.values():
+            if item["source_id"] not in self._research_sources or not item["quote"].strip() or len(item["quote"]) > 600:
+                raise ValueError("Research requires known sources and bounded short excerpts")
+        for row in records.values():
+            if not row["topic_ids"] or not set(row["topic_ids"]) <= topics.keys():
+                raise ValueError("Research references an unknown dimension")
+            if row.get("map_binding") is not None or not row["source_geography"] or not row["statistical_window"]:
+                raise ValueError("Research needs source geography/window, with no inferred map binding")
+            value = row["value"]
+            status = row["status"]
+            if status == "available":
+                if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+                    raise ValueError("Available research value must be finite")
+                if not row["evidence_ids"]:
+                    raise ValueError("Available research value requires source evidence")
+            elif status in {"missing", "approximate", "event"}:
+                if value is not None:
+                    raise ValueError("Missing, approximate and event scalars must not manufacture a number")
+            else:
+                raise ValueError("Unknown research status")
+            if not row["source_ids"] or not set(row["source_ids"]) <= self._research_sources.keys() or not set(row["evidence_ids"]) <= self._research_evidence.keys():
+                raise ValueError("Research requires known source and evidence IDs")
+            excerpt_sources = {self._research_evidence[e]["source_id"] for e in row["evidence_ids"]}
+            if not excerpt_sources <= set(row["source_ids"]):
+                raise ValueError("Research evidence and source bindings differ")
+            if status != "missing" and excerpt_sources != set(row["source_ids"]):
+                raise ValueError("Every cited research source requires its own bound excerpt")
+            if status == "available" and Decimal(str(value)) not in set().union(*(_excerpt_numbers(self._research_evidence[e]["quote"]) for e in row["evidence_ids"])):
+                raise ValueError(f"research value {row['id']} is not present in its bound source excerpt")
+            if not set(row["reference_observation_ids"]) <= {o["id"] for o in self._data["observations"]}:
+                raise ValueError("Research references an unknown original observation")
+            if row["kind"] == "forecast" and row["forecast_as_of"] is not None:
+                raise ValueError("This intake does not establish exact forecast as-of dates")
+            if status == "event":
+                if not row["evidence_ids"] or row["event"]["occurred_on"] is not None:
+                    raise ValueError("Historical events require evidence; no exact signing day is established")
+                for q in row["event"]["quantities"]:
+                    if isinstance(q["value"], bool) or not isinstance(q["value"], (int, float)) or not math.isfinite(q["value"]) or not q["unit"]:
+                        raise ValueError("Event quantity requires a finite value and its own unit")
+        for comparison in data["comparisons"]:
+            if comparison["previous_id"] not in records or comparison["current_id"] not in records:
+                raise ValueError("Research comparison requires admitted baseline and current records")
+            for key, known in (("source_ids", self._research_sources), ("evidence_ids", self._research_evidence)):
+                if not set(comparison[key]) <= known.keys():
+                    raise ValueError("Research comparison references unknown evidence")
+
     def _index(self, name):
         items = self._data[name]
         index = {item["id"]: item for item in items}
@@ -150,7 +242,8 @@ class Snapshot:
         return index
 
     def catalog(self) -> dict:
-        return copy.deepcopy({key: self._data[key] for key in ["areas", "metrics", "periods", "limitations", "dataset"]})
+        return copy.deepcopy({**{key: self._data[key] for key in ["areas", "metrics", "periods", "limitations", "dataset"]},
+                              "research_topics": self._research.get("topics", [])})
 
     def records(self, area: str, metric: str, period: str) -> list[dict]:
         definition = self._metrics[metric]
@@ -173,14 +266,18 @@ class Snapshot:
     def notes(self, period: str, area: str | None = None) -> list[dict]:
         return copy.deepcopy([n for n in self._data["notes"] if n["period"] == period and (area is None or area in n["area_ids"])])
 
+    def research(self) -> dict:
+        """Both historical report years and qualified context, independent of map filters."""
+        return copy.deepcopy(self._research)
+
     def geometry(self, area: str | None = None) -> dict:
         return {"type": "FeatureCollection", "features": copy.deepcopy([f for f in self._geometry["features"] if area is None or f["properties"]["area_id"] == area])}
 
     def source(self, source_id: str) -> dict:
-        if source_id not in self._sources:
+        if source_id not in self._sources and source_id not in self._research_sources:
             raise ValueError(f"Unknown source: {source_id}")
-        source = copy.deepcopy(self._sources[source_id])
-        source["evidence"] = [copy.deepcopy(e) for e in self._evidence.values() if e["source_id"] == source_id]
+        source = copy.deepcopy(self._sources.get(source_id, self._research_sources.get(source_id)))
+        source["evidence"] = [copy.deepcopy(e) for e in [*self._evidence.values(), *self._research_evidence.values()] if e["source_id"] == source_id]
         return source
 
     def verify(self, source_id: str) -> dict:
@@ -189,7 +286,10 @@ class Snapshot:
         Does not overwrite a snapshot. Network failures propagate to the caller as
         explicit errors, not as missing market values. Remote text is untrusted data.
         """
-        source = self.source(source_id)
+        if source_id not in self._sources:
+            raise ValueError("Live verification remains limited to the original approved Savills documents; use source_details for admitted archived research.")
+        source = copy.deepcopy(self._sources[source_id])
+        source["evidence"] = [copy.deepcopy(e) for e in self._evidence.values() if e["source_id"] == source_id]
         _approved_url(source["url"])
         request = Request(source["url"], headers={"User-Agent": "LondonOfficeMonitor/0.1 (evidence verification)", "Accept": "text/html"})
         with build_opener(_SourceRedirects()).open(request, timeout=20) as response:

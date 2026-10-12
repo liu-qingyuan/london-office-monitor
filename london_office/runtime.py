@@ -37,6 +37,8 @@ class _Answer(BaseModel):
     answer: str = Field(min_length=1, max_length=6000, description="Qualitative evidence interpretation only. No digits, amounts, dates, source IDs, spelled-out numerical amounts or numbered lists. Python fact/calculation/source cards supply all figures with their binding.")
     fact_ids: list[str]
     calculation_ids: list[str]
+    research_ids: list[str] = Field(default_factory=list, description="IDs of source-scoped historical, forecast, sample or event research records from this turn's Python tools; not map-area observations.")
+    research_comparison_ids: list[str] = Field(default_factory=list, description="IDs of Python research comparisons from this turn, with all baseline and corroborating sources cited.")
     source_ids: list[str]
     warnings: list[str] = Field(description="Qualitative warnings only; no figures or dates. Python already preserves reported and calculated values and missingness warnings.")
 
@@ -132,25 +134,53 @@ def grounded_answer(payload: dict, events: list[dict]) -> dict:
     outputs = [e["output"] for e in successful]
     collect = lambda key: {item["id"]: item for out in outputs for item in out.get(key, [])}
     facts, calculations, sources, evidence, notes = (collect(k) for k in ["observations", "comparisons", "sources", "evidence", "notes"])
-    if not set(answer.fact_ids) <= facts.keys() or not set(answer.calculation_ids) <= calculations.keys() or not set(answer.source_ids) <= sources.keys():
-        raise AgentError("invalid_citation", "The model referenced a fact, calculation or source outside this turn's tool evidence.")
+    legacy_evidence = evidence.copy()
+    research = [out["research"] for out in outputs if isinstance(out.get("research"), dict)]
+    research_records = {item["id"]: item for section in research for item in section.get("records", [])}
+    research_comparisons = {item["id"]: item for section in research for item in section.get("comparisons", [])}
+    sources.update({item["id"]: item for section in research for item in section.get("sources", [])})
+    evidence.update({item["id"]: item for section in research for item in section.get("evidence", [])})
+    if (not set(answer.fact_ids) <= facts.keys() or not set(answer.calculation_ids) <= calculations.keys()
+            or not set(answer.research_ids) <= research_records.keys()
+            or not set(answer.research_comparison_ids) <= research_comparisons.keys()
+            or not set(answer.source_ids) <= sources.keys()):
+        raise AgentError("invalid_citation", "The model referenced a fact, calculation, research record/comparison or source outside this turn's tool evidence.")
     selected_facts = [facts[key] for key in dict.fromkeys(answer.fact_ids)]
     selected_calculations = [calculations[key] for key in dict.fromkeys(answer.calculation_ids)]
+    selected_records = [research_records[key] for key in dict.fromkeys(answer.research_ids)]
+    selected_research_comparisons = [research_comparisons[key] for key in dict.fromkeys(answer.research_comparison_ids)]
     required_sources = {f["source_id"] for f in selected_facts if f.get("source_id")}
     required_sources.update(s for c in selected_calculations for s in c["source_ids"])
+    required_sources.update(s for r in selected_records for s in r["source_ids"])
+    required_sources.update(s for c in selected_research_comparisons for s in c["source_ids"])
+    # A research comparison's previous/current records can carry additional
+    # corroboration. Never drop their source citations when selecting the change.
+    for comparison in selected_research_comparisons:
+        for key in ("previous_id", "current_id"):
+            record = research_records.get(comparison[key])
+            if record:
+                required_sources.update(record["source_ids"])
     if not required_sources <= set(answer.source_ids):
-        raise AgentError("missing_citation", "Selected observations/calculations require all original source citations, including baselines.")
-    if not answer.fact_ids and not answer.calculation_ids:
-        raise AgentError("no_selected_evidence", "The answer must identify the Python facts or calculations supporting it.")
+        raise AgentError("missing_citation", "Selected observations/calculations/research require all original source citations, including baselines and corroboration.")
+    if not (selected_facts or selected_calculations or selected_records or selected_research_comparisons):
+        raise AgentError("no_selected_evidence", "The answer must identify Python facts, calculations or research supporting it.")
     if _numeric_prose(answer.answer + " " + " ".join(answer.warnings)):
         raise AgentError("unsupported_number", "Model prose must remain qualitative. Figures, dates and their area/metric/source bindings are displayed only from Python fact/calculation/source objects; no answer accepted.")
     warnings = [w for out in outputs for w in out.get("warnings", [])] + answer.warnings
     warnings.append("Historical report snapshots, not a live market feed. Interpretation is AI-generated; verified numeric facts and calculations are shown separately.")
     selected_sources = [sources[key] for key in dict.fromkeys(answer.source_ids)]
+    selected_evidence_ids = {f["evidence_id"] for f in selected_facts if f.get("evidence_id")}
+    selected_evidence_ids.update(e for c in selected_calculations for e in c.get("evidence_ids", []))
+    selected_evidence_ids.update(e for r in selected_records for e in r["evidence_ids"])
+    selected_evidence_ids.update(e for c in selected_research_comparisons for e in c["evidence_ids"])
+    selected_evidence = ([e for e in legacy_evidence.values() if e["source_id"] in answer.source_ids]
+        if not selected_records and not selected_research_comparisons else
+        [e for e in evidence.values() if e["id"] in selected_evidence_ids and e["source_id"] in answer.source_ids])
     return {"answer": answer.answer, "facts": selected_facts, "calculations": selected_calculations,
+        "research": {"records": selected_records, "comparisons": selected_research_comparisons},
         "sources": selected_sources,
-        "evidence": [e for e in evidence.values() if e["source_id"] in answer.source_ids],
-        "notes": [n for n in notes.values() if n["source_id"] in answer.source_ids],
+        "evidence": selected_evidence,
+        "notes": [n for n in notes.values() if n["source_id"] in answer.source_ids] if selected_facts or selected_calculations else [],
         "warnings": list(dict.fromkeys(warnings)),
         # Only business execution fields, never SDK events/config or local trace paths.
         "tool_calls": [{"name": e["name"], "arguments": e["arguments"], "ok": e["ok"], "output": e["output"]} for e in events]}
@@ -255,6 +285,13 @@ class CodexAdapter:
             config = {}
             if discovery is None:
                 instructions = "You are an evidence-led London OFFICE commercial real estate assistant.\n" + "\n".join((ROOT / path).read_text(encoding="utf-8") for path in ["skills/market-monitor/SKILL.md", "skills/evidence-check/SKILL.md"])
+                instructions += ("\nAuthorized research addendum: use the existing market_brief for the admitted eight-dimension research when the question concerns macro, leasing, supply, demand, submarkets, rents, vacancy or historical news. "
+                    "The brief's research.records and research.comparisons are source-scoped context, independent of the selected map area, metric and year-end period. "
+                    "Use research_ids and research_comparison_ids from THIS TURN's Python output for historical, forecast, sample or report-event context. "
+                    "Cite every source_id for selected records and comparisons, including baselines and corroboration; never map research to the selected area or infer a building location. "
+                    "Research alone may support an answer with empty fact_ids/calculation_ids. Source publication, forecast and statistical windows differ; do not conflate them. "
+                    "source_details reads known archived research excerpts; verify_source still checks only the originally approved documents, never a new source or arbitrary URL. "
+                    "This addendum extends the older JSON ID-list instruction; model answer/warnings remain qualitative with no numbers or dates.\n")
                 names = [t["name"] for t in BusinessTools().list_tools()]
             else:
                 instructions = (
@@ -347,7 +384,10 @@ class CodexAdapter:
                     DiscoveryBudget(self.settings.discovery_budget_file).start_turn("market_validation", run_id, question)
                 except DiscoveryError as error:
                     raise AgentError(error.code, error.message) from error
-            handle = session.thread.turn(prompt, effort="low", output_schema=_Answer.model_json_schema())
+            output_schema = _Answer.model_json_schema()
+            # Strict generation requires every field; parsing retains legacy default-empty lists.
+            output_schema["required"] = list(output_schema["properties"])
+            handle = session.thread.turn(prompt, effort="low", output_schema=output_schema)
             result = handle.run()
             if str(result.status.value) != "completed":
                 raise AgentError("turn_incomplete", "Codex did not complete the turn; no answer accepted.")

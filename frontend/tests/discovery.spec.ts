@@ -37,7 +37,7 @@ test('only explicit discovery submits search; fixture screening stays separate f
   expect(submissions).toEqual([]);
   await page.getByRole('button',{name:'Ask assistant',exact:true}).click();
   await expect(page.locator('#agent-result')).toContainText('AI source screening · unverified');
-  await expect(page.locator('#agent-result')).toContainText('metadata_unavailable');
+  await expect(page.locator('#agent-result')).toContainText('Native Web Search: Metadata unavailable');
   await expect(page.locator('#agent-result .answer-fact')).toHaveCount(0);
   await expect(page.locator('#agent-result .view-answer-market')).toHaveCount(0);
   expect(submissions).toEqual([{question:'Find primary London office reports',

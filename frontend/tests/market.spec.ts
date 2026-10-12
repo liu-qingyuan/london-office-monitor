@@ -147,7 +147,7 @@ with tempfile.TemporaryDirectory() as tmp:
   await page.route('https://tiles.openfreemap.org/**',route=>route.abort());
   await page.goto('/');
   await openSection(page,'Rents');
-  await expect(page.locator('#detail-content .detail-pill')).toHaveText('CONFLICT');
+  await expect(page.locator('#detail-content .detail-pill')).toHaveText('Conflict');
   await expect(page.locator('#detail-content .selected-observation')).toContainText('Conflicting evidence');
   await expect(page.locator('#detail-content .chart-bar')).toHaveCount(0);
   await expect(page.locator('#detail-content .comparison')).toContainText('Not calculated');

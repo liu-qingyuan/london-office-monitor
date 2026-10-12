@@ -60,6 +60,20 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual([row["value"] for row in market["observations"]], [105.26, 166.61, None, None])
         self.assertEqual(market["comparisons"][1]["change_value"], 5.78)
 
+    def test_eight_research_dimensions_cross_real_http_without_expanding_map_values(self):
+        code, result = self.request("/api/market?area=canary_wharf&period=2025-YE")
+        self.assertEqual(code, 200)
+        self.assertIsNone(result["observations"][0]["value"])
+        research = result["research"]
+        self.assertEqual(len(research["topics"]), 8)
+        self.assertEqual(len(research["records"]), 132)
+        self.assertEqual(len(research["latest_update"]["record_ids"]), 12)
+        self.assertEqual(len(research["exclusions"]), 7)
+        self.assertTrue(all(r["map_binding"] is None for r in research["records"]))
+        self.assertTrue(any(r["metric"] == "bank_rate" and r["value"] == 3.75 for r in research["records"]))
+        self.assertEqual(research["publication_status"], "admitted_with_caveats")
+        self.assertFalse(research["is_live"])
+
     def test_discovery_inventory_is_readonly_and_separate_from_market_facts(self):
         code, pool = self.request("/api/discovery")
         self.assertEqual(code, 200)

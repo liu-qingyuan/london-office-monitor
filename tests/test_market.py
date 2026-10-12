@@ -17,6 +17,68 @@ class MarketTests(unittest.TestCase):
         self.assertIn("105.26", result["evidence"][0]["quote"])
         self.assertFalse(result["dataset"]["is_live"])
 
+    def test_admitted_eight_dimensions_are_shared_without_borrowing_map_scope(self):
+        market = Market()
+        query = market.query(area="canary_wharf", period="2025-YE")
+        research = query["research"]
+        self.assertEqual({t["id"] for t in research["topics"]},
+                         {"submarkets", "rents", "vacancy", "leasing", "supply", "macro", "demand", "news"})
+        self.assertEqual(research["publication_status"], "admitted_with_caveats")
+        self.assertFalse(research["is_live"])
+        self.assertEqual(query["observations"][0]["status"], "missing")
+        self.assertTrue(all(r["map_binding"] is None for r in research["records"]))
+        self.assertEqual(research, market.brief(period="2025-YE", area="city")["research"])
+        self.assertTrue(any(r["metric"] == "bank_rate" and r["value"] == 3.75 for r in research["records"]))
+        self.assertTrue(any(r["metric"] == "annual_take_up" and r["value"] == 9430000 for r in research["records"]))
+        self.assertEqual(len(research["exclusions"]), 7)
+
+    def test_research_windows_forecasts_and_selected_python_changes_remain_distinct(self):
+        research = Market().brief()["research"]
+        records = research["records"]
+        forecasts = [r for r in records if r["kind"] == "forecast"]
+        self.assertTrue(forecasts)
+        self.assertTrue(all(r["forecast_as_of"] is None for r in forecasts))
+        unknown_horizon = next(r for r in forecasts if r["value"] == 24400000)
+        self.assertIsNone(unknown_horizon["target_years"])
+        starts = next(r for r in records if r["metric"] == "development_starts")
+        self.assertIn("Not stated", starts["statistical_window"])
+        approximation = next(r for r in records if r["status"] == "approximate")
+        self.assertIsNone(approximation["value"])
+        self.assertIn("around a third", approximation["display_value"])
+        changes = {c["id"]:c for c in research["comparisons"]}
+        self.assertEqual(changes["research-change-annual_take_up"]["change_value"], -6.63)
+        self.assertEqual(changes["research-change-completed_development"]["change_value"], 20.0)
+        self.assertEqual(changes["research-change-breeam_excellent_outstanding_take_up_share"]["change_value"], 5.0)
+        self.assertEqual(changes["research-change-breeam_excellent_outstanding_take_up_share"]["change_unit"], "percentage points")
+        events = [r for r in records if r["status"] == "event"]
+        self.assertEqual(len(events), 8)
+        self.assertTrue(all(r["event"]["occurred_on"] is None for r in events))
+        self.assertEqual(sum(r["event"]["snapshot_disposition"] == "enrich_existing_note_only_no_additional_event_count" for r in events), 2)
+        self.assertTrue(any("quarterly_not_year_end" in r["caveats"] for r in records))
+        self.assertEqual(sum(r["kind"] == "country_context" for r in records), 17)
+        latest_ids = set(research["latest_update"]["record_ids"])
+        self.assertEqual(sum(r["kind"] == "country_context" and r["id"] not in latest_ids for r in records), 13)
+
+    def test_corroborating_landlord_excerpt_retains_its_actual_source(self):
+        market = Market()
+        research = market.brief()["research"]
+        landlord = next(s for s in research["sources"] if s["publisher"] == "The Crown Estate")
+        evidence = market.source(landlord["id"])["evidence"]
+        self.assertTrue(evidence, "Landlord announcement cannot be attributed to the retrospective Savills report")
+        quote = next(e for e in evidence if e["section"] == "Original announcement / Ares Management pre-let paragraph")
+        self.assertTrue(quote["quote"].startswith("The Crown Estate has pre-let"))
+        event = next(r for r in research["records"] if r["id"] == "news-145")
+        self.assertIn(quote["id"], event["evidence_ids"])
+        self.assertEqual(landlord["published_at"], "2026-01-15")
+        self.assertIsNone(event["event"]["occurred_on"])
+
+    def test_research_never_widens_network_verification_scope(self):
+        market = Market()
+        source = next(s for s in market.brief()["research"]["sources"] if s["publisher"].startswith("Bank of England"))
+        self.assertTrue(market.source(source["id"])["evidence"])
+        with self.assertRaisesRegex(ValueError, "original approved Savills"):
+            market.verify_source(source["id"])
+
     def test_west_end_reported_growth_is_not_silently_replaced(self):
         comparison = Market().compare(area="west_end", metric="prime_rent", previous_period="2024-YE", current_period="2025-YE")
         self.assertEqual(comparison["change_value"], 5.78)
